@@ -318,12 +318,18 @@ try {
         ];
 
     } elseif ($role === 'admin') {
-        $totalUsers = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-        $totalDoc = $pdo->query("SELECT COUNT(*) FROM doctors")->fetchColumn();
-        $pendingDoc = $pdo->query("SELECT COUNT(*) FROM doctors WHERE approval_status='pending'")->fetchColumn();
+        $patientCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'patient'")->fetchColumn();
+        $doctorCount  = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'doctor'")->fetchColumn();
+        $pendingDoc   = (int) $pdo->query("SELECT COUNT(*) FROM doctors WHERE approval_status = 'pending'")->fetchColumn();
+        $platformUsers = $patientCount + $doctorCount;
 
         $response['data'] = [
-            'stats' => ['users' => $totalUsers, 'doctors' => $totalDoc, 'pending' => $pendingDoc]
+            'stats' => [
+                'users'    => $platformUsers,
+                'patients' => $patientCount,
+                'doctors'  => $doctorCount,
+                'pending'  => $pendingDoc,
+            ],
         ];
     }
 

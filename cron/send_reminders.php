@@ -1,28 +1,30 @@
 <?php
-// ============================================================
-// cron/send_reminders.php
-// Run via cron every 5 minutes:
-// */5 * * * * php /path/to/medalertplus/cron/send_reminders.php
-// ============================================================
+// Run every 5 minutes if you do not use the per-minute reminder_cron.php:
+// */5 * * * * php /path/to/cron/send_reminders.php
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/mail.php';
+require_once __DIR__ . '/../api/twilio_helper.php';
+require_once __DIR__ . '/reminder_common.php';
 
-date_default_timezone_set('Asia/Kolkata');
-$now        = date('H:i');
-$today      = date('Y-m-d');
-$dayOfWeek  = strtolower(date('l'));
+$tz = defined('REMINDER_TIMEZONE') ? REMINDER_TIMEZONE : 'Asia/Kolkata';
+date_default_timezone_set($tz);
 
-// Fetch all active reminders for today
-$stmt = $pdo->prepare("
-    SELECT mr.*, u.name as patient_name, u.email, u.phone, p.whatsapp_number
-    FROM medicine_reminders mr
-    JOIN patients p ON mr.patient_id = p.id
+ensureReminderCronSchema($pdo);
+
+$now   = date('H:i');
+$today = date('Y-m-d');
+
+$stmt = $pdo->prepare('
+    SELECT r.*, u.name AS patient_name, u.email, u.phone,
+           p.whatsapp_number AS profile_whatsapp
+    FROM medicine_reminders r
+    JOIN patients p ON r.patient_id = p.id
     JOIN users u ON p.user_id = u.id
-    WHERE mr.is_active = 1
-      AND (mr.start_date IS NULL OR mr.start_date <= ?)
-      AND (mr.end_date IS NULL OR mr.end_date >= ?)
-");
+    WHERE r.is_active = 1
+      AND (r.start_date IS NULL OR r.start_date <= ?)
+      AND (r.end_date IS NULL OR r.end_date >= ?)
+');
 $stmt->execute([$today, $today]);
 $reminders = $stmt->fetchAll();
 
@@ -30,64 +32,82 @@ $sentCount = 0;
 
 foreach ($reminders as $reminder) {
     $times = json_decode($reminder['reminder_times'] ?? '[]', true);
-    if (!is_array($times)) continue;
+    if (!is_array($times)) {
+        continue;
+    }
 
     foreach ($times as $reminderTime) {
-        // Check if within 5-minute window
-        $rTime = date('H:i', strtotime($reminderTime));
-        if ($rTime !== $now) continue;
+        $slotHi = reminderSlotToHi((string) $reminderTime);
+        if ($slotHi === '' || $slotHi !== $now) {
+            continue;
+        }
 
-        // Check if already sent in last 10 minutes
-        $check = $pdo->prepare("SELECT id FROM medicine_logs WHERE reminder_id=? AND scheduled_time BETWEEN DATE_SUB(NOW(), INTERVAL 10 MINUTE) AND NOW()");
+        $check = $pdo->prepare('SELECT id FROM medicine_logs WHERE reminder_id=? AND scheduled_time BETWEEN DATE_SUB(NOW(), INTERVAL 10 MINUTE) AND NOW()');
         $check->execute([$reminder['id']]);
-        if ($check->fetch()) continue;
+        if ($check->fetch()) {
+            continue;
+        }
 
-        // Log it
-        $pdo->prepare("INSERT INTO medicine_logs (reminder_id, patient_id, scheduled_time, status) VALUES (?,?,NOW(),'pending')")
-            ->execute([$reminder['id'], $reminder['patient_id']]);
+        $timePretty = date('h:i A', strtotime($today . ' ' . $slotHi . ':00'));
+        $status     = 'sent';
 
-        // Update last_sent
-        $pdo->prepare("UPDATE medicine_reminders SET last_sent=NOW() WHERE id=?")->execute([$reminder['id']]);
+        $insLog = $pdo->prepare("INSERT INTO medicine_logs (reminder_id, patient_id, scheduled_time, status) VALUES (?,?,NOW(),'pending')");
+        $insLog->execute([$reminder['id'], $reminder['patient_id']]);
+        $logId = (int) $pdo->lastInsertId();
 
-        // Send Email
-        if ($reminder['send_email'] && $reminder['email']) {
-            $sent = sendMedicineReminderEmail(
+        if (!empty($reminder['send_email']) && !empty($reminder['email'])) {
+            if (sendMedicineReminder(
                 $reminder['email'],
                 $reminder['patient_name'],
                 $reminder['medicine_name'],
                 $reminder['dosage'],
-                date('h:i A', strtotime($reminderTime))
-            );
-            if ($sent) {
-                echo "[" . date('Y-m-d H:i:s') . "] Email sent to {$reminder['email']} for {$reminder['medicine_name']}\n";
+                $timePretty
+            )) {
+                echo '[' . date('Y-m-d H:i:s') . "] Email -> {$reminder['email']} ({$reminder['medicine_name']})\n";
                 $sentCount++;
+            } else {
+                $status = 'failed';
             }
         }
 
-        // Send WhatsApp via Twilio
-        if ($reminder['send_whatsapp'] && $reminder['whatsapp_number']) {
-            $waMsg = "🔔 *Medicine Reminder — Med Alert Plus*\n\n";
-            $waMsg .= "Hello {$reminder['patient_name']}! 👋\n\n";
-            $waMsg .= "💊 It's time to take your medicine:\n";
-            $waMsg .= "• Medicine: *{$reminder['medicine_name']}*\n";
-            $waMsg .= "• Dosage: *{$reminder['dosage']}*\n";
-            $waMsg .= "• Scheduled at: *" . date('h:i A', strtotime($reminderTime)) . "*\n\n";
-            $waMsg .= "Please take your medicine and log in to Med Alert Plus to mark it as taken.\n\n";
-            $waMsg .= "_Med Alert Plus — Smart Healthcare Alert System_";
-            $sent = sendWhatsAppMessage($reminder['whatsapp_number'], $waMsg);
-            if ($sent) {
-                echo "[" . date('Y-m-d H:i:s') . "] WhatsApp sent to {$reminder['whatsapp_number']} for {$reminder['medicine_name']}\n";
+        $waTo = resolveReminderWhatsapp($reminder);
+        if (!empty($reminder['send_whatsapp']) && $waTo !== '') {
+            $plainWa = "Med Alert Plus — medicine reminder.\n\n"
+                . "Hi {$reminder['patient_name']},\n"
+                . "Take: {$reminder['medicine_name']} ({$reminder['dosage']}).\n"
+                . "Time: {$timePretty}\n\n"
+                . 'Log in to the app to mark as taken.';
+            if (sendWhatsAppMessage($waTo, $plainWa)) {
+                echo '[' . date('Y-m-d H:i:s') . "] WhatsApp -> {$waTo}\n";
+                $sentCount++;
+            } else {
+                $status = 'failed';
             }
         }
 
-        // Push notification in app
-        $pdo->prepare("INSERT INTO notifications (user_id, title, message, type) SELECT u.id, ?, ?, 'info' FROM patients p JOIN users u ON p.user_id=u.id WHERE p.id=?")
+        $phone = trim((string) ($reminder['phone'] ?? ''));
+        if (!empty($reminder['send_sms']) && $phone !== '' && isTwilioSmsConfigured()) {
+            $plainSms = 'Med Alert: Take ' . $reminder['medicine_name'] . ' (' . $reminder['dosage'] . ') now. Time ' . $timePretty . '.';
+            if (sendSmsMessage($phone, $plainSms)) {
+                echo '[' . date('Y-m-d H:i:s') . "] SMS -> {$phone}\n";
+                $sentCount++;
+            } else {
+                $status = 'failed';
+            }
+        }
+
+        $pdo->prepare('UPDATE medicine_reminders SET last_sent=NOW() WHERE id=?')->execute([$reminder['id']]);
+        if ($logId > 0) {
+            $pdo->prepare('UPDATE medicine_logs SET status=? WHERE id=?')->execute([$status, $logId]);
+        }
+
+        $pdo->prepare('INSERT INTO notifications (user_id, title, message, type) SELECT u.id, ?, ?, \'info\' FROM patients p JOIN users u ON p.user_id=u.id WHERE p.id=?')
             ->execute([
-                '💊 Medicine Reminder',
-                "Time to take {$reminder['medicine_name']} ({$reminder['dosage']}) — scheduled at " . date('h:i A', strtotime($reminderTime)),
-                $reminder['patient_id']
+                'Medicine reminder',
+                "Time to take {$reminder['medicine_name']} ({$reminder['dosage']}) — {$timePretty}",
+                $reminder['patient_id'],
             ]);
     }
 }
 
-echo "[" . date('Y-m-d H:i:s') . "] Cron completed. Sent: $sentCount reminders.\n";
+echo '[' . date('Y-m-d H:i:s') . "] Cron done. Notifications sent (counted channels): {$sentCount}\n";

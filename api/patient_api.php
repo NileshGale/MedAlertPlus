@@ -3,6 +3,7 @@ session_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/mail.php';
 require_once __DIR__ . '/twilio_helper.php';
+require_once __DIR__ . '/../cron/reminder_common.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'patient') {
@@ -78,21 +79,19 @@ function addMedicine() {
     $freq      = $_POST['frequency'] ?? 'once';
     $times     = $_POST['reminder_times'] ?? '[]';
     $start     = $_POST['start_date'] ?? null;
-    $end       = $_POST['end_date'] ?: null;
+    $end       = ($_POST['end_date'] ?? '') !== '' ? $_POST['end_date'] : null;
     $notes     = trim($_POST['notes'] ?? '');
     $sendEmail = !empty($_POST['send_email']) ? 1 : 0;
     $sendWa    = !empty($_POST['send_whatsapp']) ? 1 : 0;
+    $sendSms   = !empty($_POST['send_sms']) ? 1 : 0;
     $waNumber  = trim($_POST['whatsapp_number'] ?? '');
     
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
-    
-    // Check if column exists, if not, add it (silent fail if already exists)
-    try {
-        $pdo->exec("ALTER TABLE medicine_reminders ADD COLUMN if not exists whatsapp_number VARCHAR(20) DEFAULT NULL AFTER send_whatsapp");
-    } catch(Exception $e) {}
 
-    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,1)");
-    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$sendWa,$waNumber]);
+    ensureReminderCronSchema($pdo);
+
+    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,send_sms,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)");
+    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$sendWa,$waNumber,$sendSms]);
     $newRemId = $pdo->lastInsertId();
 
     // ---- Real-time Notification Trigger ----
@@ -131,14 +130,16 @@ function editMedicine() {
     $freq   = $_POST['frequency'] ?? 'once';
     $times  = $_POST['reminder_times'] ?? '[]';
     $start  = $_POST['start_date'] ?? null;
-    $end    = $_POST['end_date'] ?: null;
+    $end    = ($_POST['end_date'] ?? '') !== '' ? $_POST['end_date'] : null;
     $notes  = trim($_POST['notes'] ?? '');
     $email  = !empty($_POST['send_email']) ? 1 : 0;
     $wa     = !empty($_POST['send_whatsapp']) ? 1 : 0;
+    $sms    = !empty($_POST['send_sms']) ? 1 : 0;
     $waNumber = trim($_POST['whatsapp_number'] ?? '');
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
-    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=? WHERE id=? AND patient_id=?");
-    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$wa,$waNumber,$id,$profileId]);
+    ensureReminderCronSchema($pdo);
+    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=?,send_sms=? WHERE id=? AND patient_id=?");
+    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$wa,$waNumber,$sms,$id,$profileId]);
     echo json_encode(['success'=>true]);
 }
 
@@ -243,7 +244,7 @@ function addVitals() {
     $bpSys    = intval($_POST['bp_systolic'] ?? 0);
     $bpDia    = intval($_POST['bp_diastolic'] ?? 0);
     $sugar    = floatval($_POST['sugar_level'] ?? 0);
-    $log_date = $_POST['log_date'] ?: date('Y-m-d');
+    $log_date = ($_POST['log_date'] ?? '') !== '' ? $_POST['log_date'] : date('Y-m-d');
 
     if (!$weight && !$bpSys && !$sugar) {
         echo json_encode(['success'=>false, 'message'=>'Please enter at least one vital metric.']);
@@ -292,3 +293,4 @@ function markMedicineAdherence() {
     $stmt->execute([$reminderId, $profileId, $today, $status]);
     echo json_encode(['success'=>true,'message'=>'Adherence updated.']);
 }
+

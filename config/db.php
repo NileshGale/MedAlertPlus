@@ -14,6 +14,10 @@ define('GOOGLE_PLACES_API_KEY', 'AIza-test-key-replace-me');
 define('TWILIO_SID', 'AC-test-sid-replace-me');
 define('TWILIO_TOKEN', 'test-token-replace-me');
 define('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886');
+/** Twilio phone number for plain SMS (E.164, e.g. +15551234567). Leave empty until configured. */
+define('TWILIO_SMS_FROM', '');
+/** Must match the timezone used when patients set reminder times in the browser. */
+define('REMINDER_TIMEZONE', 'Asia/Kolkata');
 
 try {
     $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4", DB_USER, DB_PASS);

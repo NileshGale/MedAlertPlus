@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS `medicine_reminders` (
   `notes` text DEFAULT NULL,
   `send_email` tinyint(1) DEFAULT 1,
   `send_whatsapp` tinyint(1) DEFAULT 0,
+  `whatsapp_number` varchar(20) DEFAULT NULL,
+  `send_sms` tinyint(1) NOT NULL DEFAULT 0,
   `is_active` tinyint(1) DEFAULT 1,
   `last_sent` datetime DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),

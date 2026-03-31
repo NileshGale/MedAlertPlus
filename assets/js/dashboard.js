@@ -1055,10 +1055,13 @@ async function initDashboard() {
                    }
                }
                if (role === 'admin') {
-                   if (document.getElementById('stat-users')) document.getElementById('stat-users').textContent = st.users || 0;
-                   if (document.getElementById('stat-doctors')) document.getElementById('stat-doctors').textContent = st.doctors || 0;
+                   const patientN = Number(st.patients ?? 0);
+                   const doctorN = Number(st.doctors ?? 0);
+                   if (document.getElementById('stat-users')) document.getElementById('stat-users').textContent = patientN;
+                   if (document.getElementById('stat-doctors')) document.getElementById('stat-doctors').textContent = doctorN;
                    if (document.getElementById('stat-pending')) document.getElementById('stat-pending').textContent = st.pending || 0;
-                   if (typeof drawUserDistributionChart === 'function') drawUserDistributionChart(st.users || 0, st.doctors || 0);
+                   if (document.getElementById('stat-pending-overview')) document.getElementById('stat-pending-overview').textContent = st.pending || 0;
+                   if (typeof drawUserDistributionChart === 'function') drawUserDistributionChart(patientN, doctorN);
                }
                if (role === 'doctor') {
                    if (document.getElementById('stat-total')) document.getElementById('stat-total').textContent = st.total || 0;

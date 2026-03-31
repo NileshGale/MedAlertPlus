@@ -98,7 +98,7 @@ function sendSOSAlert($toEmail, $patientName, $lat, $lng) {
         return false;
     }
 }
-function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage) {
+function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage, $scheduledTimeLabel = null) {
     if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) return false;
 
     $mail = new PHPMailer(true);
@@ -116,6 +116,9 @@ function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage) {
 
         $mail->isHTML(true);
         $mail->Subject = "Medicine Reminder: {$medicineName}";
+        $timeHtml = $scheduledTimeLabel
+            ? "<p style='margin: 5px 0; font-size: 16px;'><strong>Scheduled time:</strong> " . htmlspecialchars($scheduledTimeLabel) . "</p>"
+            : '';
         $mail->Body    = "
         <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #3b82f6; border-radius: 12px;'>
             <h2 style='color: #1e40af; text-align: center;'>Medication Reminder</h2>
@@ -124,6 +127,7 @@ function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage) {
             <div style='background: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #bfdbfe;'>
                 <p style='margin: 0; font-size: 18px; color: #1e40af;'><strong>Medicine:</strong> {$medicineName}</p>
                 <p style='margin: 5px 0; font-size: 16px;'><strong>Dosage:</strong> {$dosage}</p>
+                {$timeHtml}
             </div>
             <p>Please ensure you take the correct dose. If you have already taken it, you can ignore this reminder.</p>
             <hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;' />
