@@ -28,12 +28,40 @@ try {
 
         case 'clinics':
             $query = trim($_GET['query'] ?? '');
-            // In a real app, this would call Google Places or search a local 'clinics' table.
-            // For this project, we search approved doctors and their clinic info.
-            $sql = "SELECT d.clinic_name, d.clinic_address, d.fees, d.clinic_status, u.name as doctor_name 
+            $results = [];
+
+            // 1. Optional: Real-world API Integration (Google Places)
+            // If the user has provided a valid key in config/db.php
+            if (defined('GOOGLE_PLACES_API_KEY') && strpos(GOOGLE_PLACES_API_KEY, 'replace-me') === false && !empty($query)) {
+                try {
+                    $url = "https://maps.googleapis.com/maps/api/place/textsearch/json?query=" . urlencode("clinics and doctors in " . $query) . "&key=" . GOOGLE_PLACES_API_KEY;
+                    $apiRes = file_get_contents($url);
+                    $apiData = json_decode($apiRes, true);
+                    
+                    if (isset($apiData['results'])) {
+                        foreach ($apiData['results'] as $place) {
+                            $results[] = [
+                                'clinic_name' => $place['name'],
+                                'clinic_address' => $place['formatted_address'],
+                                'fees' => 'Consulting', // Placeholder as API doesn't provide fees
+                                'clinic_status' => $place['business_status'] === 'OPERATIONAL' ? 'open' : 'closed',
+                                'doctor_name' => 'Dr. External Specialist',
+                                'contact' => 'Available on Location',
+                                'id' => 0 // External result
+                            ];
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Google Places API Error: " . $e->getMessage());
+                }
+            }
+
+            // 2. Local Database Search (Always include local approved doctors)
+            $sql = "SELECT d.id, d.clinic_name, d.clinic_address, d.fees, d.clinic_status, u.name as doctor_name, u.phone as contact 
                     FROM doctors d 
                     JOIN users u ON d.user_id = u.id 
                     WHERE d.approval_status = 'approved'";
+            
             if ($query) {
                 $sql .= " AND (d.clinic_name LIKE ? OR d.clinic_address LIKE ? OR u.name LIKE ?)";
                 $stmt = $pdo->prepare($sql);
@@ -43,7 +71,11 @@ try {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute();
             }
-            $response['data'] = $stmt->fetchAll();
+            
+            $dbResults = $stmt->fetchAll();
+            $mergedResults = array_merge($dbResults, $results);
+            
+            $response['data'] = $mergedResults;
             echo json_encode($response);
             exit;
 

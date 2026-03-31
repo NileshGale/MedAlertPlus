@@ -364,12 +364,22 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                 <button type="submit" class="btn btn-primary" style="width:100%">Analyze Symptoms</button>
              </form>
              <div id="symptomResult" style="display:none;margin-top:30px;padding:25px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;">
-                <h3 style="color:#0369a1;margin-bottom:15px"><i class="fas fa-info-circle"></i> Possible Condition: <span id="resDisease">...</span></h3>
-                <div style="margin-bottom:15px"><strong>Recommended Medicines:</strong> <span id="resMeds">...</span></div>
-                <div style="margin-bottom:20px"><strong>Home Remedies:</strong> <p id="resRemedies" style="margin-top:5px;font-size:14px;color:var(--text-light)"></p></div>
-                <div style="display:flex;gap:15px">
-                   <button class="btn" style="background:#fff;border:1px solid #bae6fd;color:#0369a1" onclick="resetSymptomChecker()">Start Over</button>
-                   <button class="btn btn-primary" onclick="showTab('clinics')">Find Doctor</button>
+                <div id="resSummaryContainer">
+                   <h3 style="color:#0369a1;margin-bottom:15px"><i class="fas fa-info-circle"></i> Possible Condition: <span id="resDisease">...</span></h3>
+                   <div style="margin-bottom:20px"><strong>Recommended Medicines:</strong> <p id="resMeds" style="margin-top:5px;font-size:14px;color:var(--text-light)"></p></div>
+                   <div style="display:flex;gap:15px">
+                      <button class="btn btn-primary" onclick="showHomeRemedies()">Next: Home Remedies</button>
+                      <button class="btn" style="background:#fff;border:1px solid #bae6fd;color:#0369a1" onclick="resetSymptomChecker()">Start Over</button>
+                   </div>
+                </div>
+                
+                <div id="resRemediesContainer" style="display:none">
+                   <h3 style="color:#0369a1;margin-bottom:15px"><i class="fas fa-leaf"></i> Home Remedies</h3>
+                   <p id="resRemedies" style="margin-bottom:20px;font-size:15px;line-height:1.6;color:var(--text-light)"></p>
+                   <div style="display:flex;gap:15px">
+                      <button class="btn btn-primary" onclick="showTab('clinics')">Find Near Doctor</button>
+                      <button class="btn" style="background:#fff;border:1px solid #bae6fd;color:#0369a1" onclick="resetSymptomChecker()">Finish</button>
+                   </div>
                 </div>
              </div>
           </div>
@@ -431,6 +441,36 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                 <div style="height:350px"><canvas id="mainVitalsChart"></canvas></div>
                 <div style="height:350px"><canvas id="sugarChart"></canvas></div>
              </div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Appointments Tab -->
+    <div class="tab-pane" id="tab-appointments">
+       <div class="card">
+          <div class="card-header">My Appointments</div>
+          <div class="card-body">
+             <div class="empty-state">View all your upcoming and past medical consultations.</div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Reports Tab -->
+    <div class="tab-pane" id="tab-reports">
+       <div class="card">
+          <div class="card-header">Medical Reports</div>
+          <div class="card-body">
+             <div class="empty-state">Upload and manage your medical test results and history.</div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Profile Tab -->
+    <div class="tab-pane" id="tab-profile">
+       <div class="card">
+          <div class="card-header">My Profile</div>
+          <div class="card-body">
+             <div class="empty-state">Manage your account details and contact information.</div>
           </div>
        </div>
     </div>

@@ -165,12 +165,22 @@ td { padding: 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
                    <option value="doctor">Doctors</option>
                    <option value="patient">Patients</option>
                 </select>
-                <button class="btn btn-primary" onclick="downloadUserList()"><i class="fas fa-download"></i> PDF</button>
+                <button class="btn btn-primary" onclick="downloadUserList()"><i class="fas fa-download"></i> PDF Report</button>
              </div>
           </div>
           <div class="card-body" id="userManagementTable">
              <!-- AJAX Loaded -->
               <div class="empty-state">Loading user list...</div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Reports Tab -->
+    <div class="tab-pane" id="tab-reports">
+       <div class="card">
+          <div class="card-header">System Reports</div>
+          <div class="card-body">
+             <div class="empty-state">Generate and download comprehensive health and system usage reports.</div>
           </div>
        </div>
     </div>

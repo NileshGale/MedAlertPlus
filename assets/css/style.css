@@ -23,17 +23,19 @@ body {
     font-family: 'Inter', sans-serif;
     color: var(--text);
     background-color: var(--light);
+    overflow-y: hidden;
 }
 
 /* Auth Pages Background */
 .auth-page {
     background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
-    min-height: 100vh;
+    height: 100vh;
+    padding: 0;
+    position: relative;
+    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
-    overflow: hidden;
 }
 
 /* Decorative Background Blobs */
@@ -73,7 +75,7 @@ body {
     display: flex;
     max-width: 1000px;
     width: 90%;
-    margin: 40px auto;
+    margin: 0 auto;
     z-index: 10;
     border-radius: 20px;
     box-shadow: var(--glass-shadow);
@@ -83,6 +85,7 @@ body {
     border: 1px solid var(--glass-border);
     overflow: hidden;
     position: relative;
+    align-items: stretch;
 }
 
 .auth-left {
@@ -108,8 +111,19 @@ body {
 
 .auth-right {
     flex: 1;
-    padding: 50px;
+    padding: 40px;
     background: white;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow-y: auto;
+}
+
+.auth-box {
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
 }
 
 .auth-box h2 {
@@ -121,12 +135,12 @@ body {
 
 .auth-box .subtitle {
     color: var(--text-muted);
-    margin-bottom: 30px;
+    margin-bottom: 18px;
 }
 
 /* Forms */
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: 14px;
 }
 
 .form-group label {
@@ -139,7 +153,7 @@ body {
 
 .form-group input {
     width: 100%;
-    padding: 12px 15px;
+    padding: 10px 12px;
     border: 1px solid #ddd;
     border-radius: 8px;
     font-size: 1rem;
@@ -155,7 +169,7 @@ body {
 
 /* Buttons */
 .btn {
-    padding: 12px 20px;
+    padding: 10px 16px;
     border: none;
     border-radius: 8px;
     font-size: 1rem;
@@ -196,12 +210,12 @@ body {
     background: #f4f6f9;
     padding: 5px;
     border-radius: 10px;
-    margin-bottom: 25px;
+    margin-bottom: 16px;
 }
 
 .tab-btn {
     flex: 1;
-    padding: 10px;
+    padding: 9px;
     border: none;
     background: transparent;
     font-weight: 600;
@@ -233,16 +247,16 @@ body {
 }
 
 .form-footer {
-    margin-top: 30px;
+    margin-top: 16px;
     text-align: center;
-    font-size: 0.9rem;
-    color: var(--text-muted);
+    font-size: 0.95rem;
+    color: #444; /* Darker color for better contrast */
 }
 
 .form-footer a {
     color: var(--primary);
     text-decoration: none;
-    font-weight: 600;
+    font-weight: 700;
     margin-left: 5px;
 }
 
@@ -273,15 +287,30 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
+    .auth-page {
+        display: block;
+        height: auto;
+        min-height: 100vh;
+        padding: 24px 0;
+        overflow-y: auto;
+    }
     .auth-wrapper {
         flex-direction: column;
+        margin: 0 auto;
     }
     .auth-left {
         padding: 30px;
         text-align: center;
     }
     .auth-right {
-        padding: 30px;
+        padding: 24px;
+        overflow-y: auto;
+    }
+}
+
+@media (min-width: 769px) {
+    .auth-wrapper {
+        max-height: calc(100vh - 64px);
     }
 }
 

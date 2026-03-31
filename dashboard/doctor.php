@@ -169,6 +169,36 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
           </div>
        </div>
     </div>
+
+    <!-- Schedule Tab -->
+    <div class="tab-pane" id="tab-schedule">
+       <div class="card">
+          <div class="card-header">My Working Schedule</div>
+          <div class="card-body">
+             <div class="empty-state">Set your weekly availability and consultation hours.</div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Patients Tab -->
+    <div class="tab-pane" id="tab-patients">
+       <div class="card">
+          <div class="card-header">My Patients</div>
+          <div class="card-body">
+             <div class="empty-state">View medical history and records of patients you've treated.</div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Profile Tab -->
+    <div class="tab-pane" id="tab-profile">
+       <div class="card">
+          <div class="card-header">Doctor Profile</div>
+          <div class="card-body">
+             <div class="empty-state">Manage your professional information and clinic details.</div>
+          </div>
+       </div>
+    </div>
   </div>
 </div>
 </div>

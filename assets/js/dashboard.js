@@ -270,8 +270,18 @@ if (sympForm) {
         document.getElementById('resDisease').innerText = data.disease;
         document.getElementById('resMeds').innerText = data.medicines;
         document.getElementById('resRemedies').innerText = data.home_remedies;
+        
+        // Hide the inputs form
         sympForm.style.display = 'none';
-        document.getElementById('symptomResult').style.display = 'block';
+        
+        // Ensure home remedies part is initially hidden or separated
+        document.getElementById('resRemediesContainer').style.display = 'none';
+        document.getElementById('resSummaryContainer').style.display = 'block';
+        
+        // Show result div
+        const resultDiv = document.getElementById('symptomResult');
+        resultDiv.style.display = 'block';
+        
         // Save to DB
         const sympsArr = formData.getAll('symptoms[]');
         fetch('../api/patient_api.php', { 
@@ -405,9 +415,13 @@ async function loadUserList() {
 }
 
 function downloadUserList() {
-   showToast('Generating PDF Report...', 'info');
    const role = document.getElementById('userFilterRole')?.value || 'all';
-   window.print(); // Simple PDF export for now
+   window.open(`../api/export_pdf.php?role=${role}`, '_blank');
+}
+
+function showHomeRemedies() {
+    document.getElementById('resSummaryContainer').style.display = 'none';
+    document.getElementById('resRemediesContainer').style.display = 'block';
 }
 
 function openBookingModal(id, name) {
