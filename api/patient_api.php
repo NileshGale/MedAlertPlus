@@ -109,27 +109,18 @@ function addMedicine() {
             $timeStr  = is_array($timesArr) ? implode(', ', $timesArr) : $times;
             
             // 1. Dashboard Notification
-            $notifMsg = "New Medicine Reminder Set: $name ($dosage) at $timeStr. Frequency: " . ucfirst($freq);
+            $notifMsg = "New Medicine Reminder Scheduled: $name ($dosage) at $timeStr. Frequency: " . ucfirst($freq);
             $pdo->prepare("INSERT INTO notifications (user_id, title, message, type) VALUES (?, 'Medicine Reminder Set', ?, 'info')")
                 ->execute([$userId, $notifMsg]);
 
-            // 2. Email Notification
-            if ($sendEmail && filter_var($pat['email'], FILTER_VALIDATE_EMAIL)) {
-                sendMedicineReminder($pat['email'], $pat['name'], $name, "$dosage ($timeStr, $freq)");
-            }
-
-            // 3. WhatsApp Notification
-            $targetWa = !empty($waNumber) ? $waNumber : $pat['profile_wa'];
-            if ($sendWa && !empty($targetWa)) {
-                sendWhatsAppReminder($targetWa, $name, "$dosage ($timeStr, $freq)");
-            }
+            // Removed immediate Email/WhatsApp notifications so they only trigger on time via cron trigger.
         }
     } catch (Exception $e) {
         // Log error but don't fail the entire request
         error_log("Real-time notification failed: " . $e->getMessage());
     }
 
-    echo json_encode(['success'=>true,'message'=>'Medicine reminder added! Immediate notification sent where selected.']);
+    echo json_encode(['success'=>true,'message'=>'Reminder is set']);
 }
 
 function editMedicine() {
