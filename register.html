@@ -73,9 +73,10 @@
                         <label>Phone Number</label>
                         <input type="tel" name="phone" required placeholder="+1 234 567 8900">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="position:relative;">
                         <label>Specialization</label>
-                        <input type="text" name="specialization" required placeholder="Cardiologist">
+                        <input type="text" name="specialization" id="doc_specialization" required placeholder="Cardiologist" autocomplete="off">
+                        <div id="specialization-suggestions" class="suggestion-box"></div>
                     </div>
                     <div class="form-group">
                         <label>License Number</label>

@@ -106,6 +106,13 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 }
 .logout-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
 .empty-state { text-align: center; padding: 30px 20px; color: var(--muted); }
+.top-bar-right { display: flex; align-items: center; gap: 16px; }
+.theme-btn {
+  background: var(--bg); border: 1px solid var(--border); width: 40px; height: 40px;
+  border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text); transition: 0.2s;
+}
+.theme-btn:hover { background: var(--border); }
 </style>
 </head>
 <body>
@@ -222,7 +229,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                    <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Phone</label><input type="text" name="phone" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
-                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Specialization</label><input type="text" name="specialization" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                   <div style="position:relative;"><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Specialization</label><input type="text" name="specialization" id="doc_specialization_update" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;" autocomplete="off"><div id="specialization-suggestions-update" class="suggestion-box"></div></div>
                    <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Qualification</label><input type="text" name="qualification" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
                    <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Experience Years</label><input type="number" name="experience" min="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
                 </div>

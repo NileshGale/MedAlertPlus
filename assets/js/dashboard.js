@@ -2,6 +2,59 @@
 // assets/js/dashboard.js — Shared Dashboard Utilities
 // ============================================================
 
+// ---- Custom Confirm Modal (replaces native confirm()) ----
+function showConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning' } = {}) {
+  return new Promise((resolve) => {
+    // Remove any existing modal
+    document.getElementById('customConfirmOverlay')?.remove();
+
+    const colors = { warning: '#f59e0b', danger: '#ef4444', info: '#3b82f6' };
+    const icons = { warning: 'exclamation-triangle', danger: 'trash-alt', info: 'info-circle' };
+    const accentColor = colors[type] || colors.warning;
+    const iconName = icons[type] || icons.warning;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customConfirmOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;animation:confirmFadeIn .2s ease';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 24px 48px rgba(0,0,0,0.15);text-align:center;animation:confirmSlideIn .25s ease">
+        <div style="width:56px;height:56px;border-radius:50%;background:${accentColor}15;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+          <i class="fas fa-${iconName}" style="font-size:24px;color:${accentColor}"></i>
+        </div>
+        <h3 style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:8px">Are you sure?</h3>
+        <p style="font-size:14px;color:#64748b;line-height:1.5;margin-bottom:24px">${message}</p>
+        <div style="display:flex;gap:12px;justify-content:center">
+          <button id="confirmCancel" style="flex:1;padding:10px 20px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s">${cancelText}</button>
+          <button id="confirmOk" style="flex:1;padding:10px 20px;border-radius:10px;border:none;background:${accentColor};color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s;box-shadow:0 4px 12px ${accentColor}40">${confirmText}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Add animations via a style tag if not already present
+    if (!document.getElementById('confirmModalStyles')) {
+      const style = document.createElement('style');
+      style.id = 'confirmModalStyles';
+      style.textContent = `
+        @keyframes confirmFadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes confirmSlideIn { from { opacity: 0; transform: scale(0.95) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+        #confirmCancel:hover { background: #f8fafc !important; border-color: #cbd5e1 !important; }
+        #confirmOk:hover { filter: brightness(1.1); transform: translateY(-1px); }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const cleanup = (result) => { overlay.remove(); resolve(result); };
+    overlay.querySelector('#confirmOk').addEventListener('click', () => cleanup(true));
+    overlay.querySelector('#confirmCancel').addEventListener('click', () => cleanup(false));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(false); });
+    document.addEventListener('keydown', function handler(e) {
+      if (e.key === 'Escape') { cleanup(false); document.removeEventListener('keydown', handler); }
+      if (e.key === 'Enter') { cleanup(true); document.removeEventListener('keydown', handler); }
+    });
+  });
+}
+
 // ---- Tab Navigation ----
 function showTab(name) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -134,7 +187,7 @@ document.addEventListener('DOMContentLoaded', initTheme);
 
 // ---- Emergency SOS ----
 async function triggerSOS() {
-  if (!confirm('TRIGGER EMERGENCY SOS? This will alert your emergency contacts and nearby doctors.')) return;
+  if (!await showConfirm('This will alert your emergency contacts and nearby doctors.', { confirmText: 'Send SOS', type: 'danger' })) return;
   
   showToast('Fetching location...', 'info');
   navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -332,7 +385,7 @@ function toggleAppointmentDetails(id) {
 }
 
 async function cancelPatientAppointment(id) {
-  if (!confirm('Cancel this appointment?')) return;
+  if (!await showConfirm('Cancel this appointment? This action cannot be undone.', { confirmText: 'Yes, Cancel', type: 'danger' })) return;
   const res = await fetch('../api/patient_api.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -508,7 +561,7 @@ function manageMeetLink(id, current) {
 
 // ---- Admin: Actions ----
 async function adminAction(action, params) {
-  if (!confirm('Are you sure you want to perform this action?')) return;
+  if (!await showConfirm('Are you sure you want to perform this action?', { confirmText: 'Yes, Proceed', type: 'warning' })) return;
   const body = new URLSearchParams({ action, ...params }).toString();
   const res = await fetch('../api/admin_api.php', { 
      method: 'POST', 
@@ -603,7 +656,7 @@ function previewPatientReport(fileType, url) {
 }
 
 async function deletePatientReport(id) {
-  if (!confirm('Delete this report?')) return;
+  if (!await showConfirm('Delete this report? This action cannot be undone.', { confirmText: 'Delete', type: 'danger' })) return;
   const res = await fetch('../api/patient_api.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -686,15 +739,27 @@ async function loadDoctorSchedule() {
   const map = {};
   (json.data || []).forEach(r => { map[r.day_of_week] = r; });
   wrapper.className = '';
-  wrapper.innerHTML = days.map(day => {
+
+  // Add Header Row for Clarity
+  const headerHtml = `
+    <div style="display:grid;grid-template-columns:130px 100px 1fr 1fr 1fr;gap:10px;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
+      <div>Day</div>
+      <div>Availability</div>
+      <div>Start Time</div>
+      <div>End Time</div>
+      <div>Slot (Mins)</div>
+    </div>
+  `;
+
+  wrapper.innerHTML = headerHtml + days.map(day => {
     const row = map[day] || { is_available: 0, start_time: '09:00:00', end_time: '17:00:00', slot_duration: 30 };
     return `
       <div style="display:grid;grid-template-columns:130px 100px 1fr 1fr 1fr;gap:10px;align-items:center;margin-bottom:10px;">
-        <strong style="text-transform:capitalize;">${day}</strong>
-        <label><input type="checkbox" name="${day}_available" ${parseInt(row.is_available, 10) ? 'checked' : ''}> Open</label>
-        <input type="time" name="${day}_start" value="${(row.start_time || '09:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;">
-        <input type="time" name="${day}_end" value="${(row.end_time || '17:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;">
-        <input type="number" min="5" name="${day}_slot" value="${row.slot_duration || 30}" style="padding:8px;border:1px solid var(--border);border-radius:8px;">
+        <strong style="text-transform:capitalize;font-size:14px;color:var(--text);">${day}</strong>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" name="${day}_available" ${parseInt(row.is_available, 10) ? 'checked' : ''}> Open</label>
+        <input type="time" name="${day}_start" value="${(row.start_time || '09:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;">
+        <input type="time" name="${day}_end" value="${(row.end_time || '17:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;">
+        <input type="number" min="5" step="5" name="${day}_slot" value="${row.slot_duration || 30}" placeholder="Mins" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;">
       </div>
     `;
   }).join('');
@@ -928,6 +993,7 @@ if (patientProfileForm) {
     const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
     const json = await res.json();
     showToast(json.message || (json.success ? 'Saved' : 'Failed'), json.success ? 'success' : 'error');
+    if (json.success) setTimeout(() => showTab('overview'), 600);
   });
 }
 
@@ -939,7 +1005,58 @@ if (doctorProfileForm) {
     const res = await fetch('../api/doctor_api.php', { method: 'POST', body: fd });
     const json = await res.json();
     showToast(json.message || (json.success ? 'Saved' : 'Failed'), json.success ? 'success' : 'error');
+    if (json.success) setTimeout(() => showTab('overview'), 600);
   });
+
+  // Doctor Specialization Suggestions (Profile Update)
+  const medicalSpecializations = [
+      "Cardiologist", "Dermatologist", "Endocrinologist", "Gastroenterologist", 
+      "Hematologist", "Infectious Disease Specialist", "Nephrologist", 
+      "Neurologist", "Obstetrician/Gynecologist (OB/GYN)", "Oncologist", 
+      "Ophthalmologist", "Orthopedic Surgeon", "Otolaryngologist (ENT)", 
+      "Pediatrician", "Psychiatrist", "Pulmonologist", "Radiologist", 
+      "Rheumatologist", "Urologist", "Anesthesiologist", "Dermatopathologist", 
+      "Emergency Medicine Specialist", "Family Medicine Physician", "Geriatrician", 
+      "Medical Geneticist", "Pathologist", "Physical Medicine and Rehabilitation Specialist", 
+      "Plastic Surgeon", "Preventive Medicine Specialist"
+  ];
+
+  const specInput = document.getElementById('doc_specialization_update');
+  const specSuggestions = document.getElementById('specialization-suggestions-update');
+
+  if (specInput && specSuggestions) {
+      specInput.addEventListener('input', () => {
+          const query = specInput.value.toLowerCase();
+          specSuggestions.innerHTML = '';
+          
+          if (query.length < 2) {
+              specSuggestions.style.display = 'none';
+              return;
+          }
+
+          const filtered = medicalSpecializations.filter(s => s.toLowerCase().includes(query));
+          
+          if (filtered.length > 0) {
+              specSuggestions.style.display = 'block';
+              filtered.forEach(s => {
+                  const div = document.createElement('div');
+                  div.className = 'suggestion-item';
+                  div.innerText = s;
+                  div.onclick = () => {
+                      specInput.value = s;
+                      specSuggestions.style.display = 'none';
+                  };
+                  specSuggestions.appendChild(div);
+              });
+          } else {
+              specSuggestions.style.display = 'none';
+          }
+      });
+
+      document.addEventListener('click', (e) => {
+          if (e.target !== specInput) specSuggestions.style.display = 'none';
+      });
+  }
 }
 
 const doctorScheduleForm = document.getElementById('doctorScheduleForm');
@@ -968,7 +1085,7 @@ if (doctorScheduleForm) {
 async function doctorUpdateAppointmentStatus(id, action) {
   if (!['confirm_appointment','cancel_appointment','complete_appointment'].includes(action)) return;
   // Simple confirmation for destructive actions
-  if (action === 'cancel_appointment' && !confirm('Cancel this appointment?')) return;
+  if (action === 'cancel_appointment' && !await showConfirm('Cancel this appointment? This action cannot be undone.', { confirmText: 'Yes, Cancel', type: 'danger' })) return;
   const body = new URLSearchParams({ action, id }).toString();
   try {
     const res = await fetch('../api/doctor_api.php', {

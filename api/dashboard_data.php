@@ -17,6 +17,26 @@ $type = $_GET['type'] ?? 'all';
 $response = ['success' => true, 'data' => []];
 
 try {
+    if ($type === 'initial_load') {
+        $response['user'] = [
+            'id' => $userId,
+            'name' => $_SESSION['user_name'] ?? '',
+            'role' => $role,
+            'email' => $_SESSION['user_email'] ?? '',
+            'profile_id' => $profileId
+        ];
+        
+        if ($role === 'doctor' && $profileId) {
+            $stmt = $pdo->prepare("SELECT specialization, clinic_status FROM doctors WHERE id = ?");
+            $stmt->execute([$profileId]);
+            $docInfo = $stmt->fetch();
+            $response['user']['specialization'] = $docInfo['specialization'] ?? 'Specialist';
+            $response['user']['clinic_status'] = $docInfo['clinic_status'] ?? 'closed';
+        }
+        
+        $type = 'all'; // Continue to fetch stats below
+    }
+
     // Handle specific data type requests first
     switch ($type) {
         case 'medicines':

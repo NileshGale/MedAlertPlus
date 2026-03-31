@@ -80,8 +80,8 @@ function addMedicine() {
     $start     = $_POST['start_date'] ?? null;
     $end       = $_POST['end_date'] ?: null;
     $notes     = trim($_POST['notes'] ?? '');
-    $sendEmail = intval($_POST['send_email'] ?? 1);
-    $sendWa    = intval($_POST['send_whatsapp'] ?? 0);
+    $sendEmail = !empty($_POST['send_email']) ? 1 : 0;
+    $sendWa    = !empty($_POST['send_whatsapp']) ? 1 : 0;
     $waNumber  = trim($_POST['whatsapp_number'] ?? '');
     
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
@@ -142,8 +142,8 @@ function editMedicine() {
     $start  = $_POST['start_date'] ?? null;
     $end    = $_POST['end_date'] ?: null;
     $notes  = trim($_POST['notes'] ?? '');
-    $email  = intval($_POST['send_email'] ?? 1);
-    $wa     = intval($_POST['send_whatsapp'] ?? 0);
+    $email  = !empty($_POST['send_email']) ? 1 : 0;
+    $wa     = !empty($_POST['send_whatsapp']) ? 1 : 0;
     $waNumber = trim($_POST['whatsapp_number'] ?? '');
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
     $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=? WHERE id=? AND patient_id=?");

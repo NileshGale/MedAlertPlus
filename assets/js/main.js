@@ -144,4 +144,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Handle Specialization Suggestions (Registration)
+    const medicalSpecializations = [
+        "Cardiologist", "Dermatologist", "Endocrinologist", "Gastroenterologist", 
+        "Hematologist", "Infectious Disease Specialist", "Nephrologist", 
+        "Neurologist", "Obstetrician/Gynecologist (OB/GYN)", "Oncologist", 
+        "Ophthalmologist", "Orthopedic Surgeon", "Otolaryngologist (ENT)", 
+        "Pediatrician", "Psychiatrist", "Pulmonologist", "Radiologist", 
+        "Rheumatologist", "Urologist", "Anesthesiologist", "Dermatopathologist", 
+        "Emergency Medicine Specialist", "Family Medicine Physician", "Geriatrician", 
+        "Medical Geneticist", "Pathologist", "Physical Medicine and Rehabilitation Specialist", 
+        "Plastic Surgeon", "Preventive Medicine Specialist"
+    ];
+
+    const specInput = document.getElementById('doc_specialization');
+    const specSuggestions = document.getElementById('specialization-suggestions');
+
+    if (specInput && specSuggestions) {
+        specInput.addEventListener('input', () => {
+            const query = specInput.value.toLowerCase();
+            specSuggestions.innerHTML = '';
+            
+            if (query.length < 2) {
+                specSuggestions.style.display = 'none';
+                return;
+            }
+
+            const filtered = medicalSpecializations.filter(s => s.toLowerCase().includes(query));
+            
+            if (filtered.length > 0) {
+                specSuggestions.style.display = 'block';
+                filtered.forEach(s => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.innerText = s;
+                    div.onclick = () => {
+                        specInput.value = s;
+                        specSuggestions.style.display = 'none';
+                    };
+                    specSuggestions.appendChild(div);
+                });
+            } else {
+                specSuggestions.style.display = 'none';
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target !== specInput) specSuggestions.style.display = 'none';
+        });
+    }
+
 });
