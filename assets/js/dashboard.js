@@ -487,32 +487,211 @@ function resetSymptomChecker() {
   if (form) { form.reset(); form.style.display = 'none'; }
 }
 
-// ---- Patient: Clinic Search (Real API Integration) ----
-async function searchClinics() {
-  const addr = document.getElementById('clinicAddress').value;
-  const container = document.getElementById('clinicResults');
-  if (!addr) { showToast('Please enter a location', 'warning'); return; }
-  container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Searching for clinics in ' + addr + '...</div>';
-  
+// ---- Patient: Clinic Search (Google + OpenStreetMap fallback) ----
+let clinicGeoPoint = null;
+let clinicSuggestTimer = null;
+let clinicSuggestSeq = 0;
+
+function escClinic(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildClinicSearchParams(extra) {
+  const p = new URLSearchParams({ type: 'clinics', ...extra });
+  const line = document.getElementById('clinicAddressLine')?.value?.trim() || '';
+  const city = document.getElementById('clinicCity')?.value?.trim() || '';
+  const state = document.getElementById('clinicState')?.value?.trim() || '';
+  const postal = document.getElementById('clinicPostal')?.value?.trim() || '';
+  const country = document.getElementById('clinicCountry')?.value?.trim() || 'India';
+  if (line) p.set('address_line', line);
+  if (city) p.set('city', city);
+  if (state) p.set('state', state);
+  if (postal) p.set('postal_code', postal);
+  if (country) p.set('country', country);
+  return p;
+}
+
+function fillClinicAddressFields(s) {
+  if (!s) return;
+  const line = document.getElementById('clinicAddressLine');
+  const city = document.getElementById('clinicCity');
+  const state = document.getElementById('clinicState');
+  const postal = document.getElementById('clinicPostal');
+  const country = document.getElementById('clinicCountry');
+  if (line) line.value = s.address_line || s.display_name || '';
+  if (city && s.city) city.value = s.city;
+  if (state && s.state) state.value = s.state;
+  if (postal && s.postal_code) postal.value = s.postal_code;
+  if (country && s.country) country.value = s.country;
+  if (typeof s.lat === 'number' && typeof s.lng === 'number') {
+    clinicGeoPoint = { lat: s.lat, lng: s.lng };
+  }
+}
+
+function hideClinicSuggestions() {
+  const box = document.getElementById('clinicAddressSuggestions');
+  if (box) {
+    box.innerHTML = '';
+    box.style.display = 'none';
+  }
+}
+
+function showClinicSuggestions(list) {
+  const box = document.getElementById('clinicAddressSuggestions');
+  if (!box) return;
+  if (!Array.isArray(list) || list.length === 0) {
+    hideClinicSuggestions();
+    return;
+  }
+  box.innerHTML = list.map((s) => {
+    const payload = encodeURIComponent(JSON.stringify(s));
+    return `<button type="button" data-s="${payload}" style="display:block;width:100%;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--border);padding:10px 12px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--text)">${escClinic(s.display_name || '')}</button>`;
+  }).join('');
+  box.style.display = 'block';
+  box.querySelectorAll('button[data-s]').forEach((btn) => {
+    btn.onclick = () => {
+      try {
+        const s = JSON.parse(decodeURIComponent(btn.getAttribute('data-s')));
+        fillClinicAddressFields(s);
+      } catch (e) {}
+      hideClinicSuggestions();
+    };
+  });
+}
+
+async function suggestClinicAddress() {
+  const line = document.getElementById('clinicAddressLine')?.value?.trim() || '';
+  const country = document.getElementById('clinicCountry')?.value?.trim() || '';
+  if (line.length < 3) {
+    hideClinicSuggestions();
+    return;
+  }
+  clinicSuggestSeq += 1;
+  const currentSeq = clinicSuggestSeq;
+  const p = new URLSearchParams({ type: 'clinic_address_suggest', q: line, country });
   try {
-     const res = await fetch('../api/dashboard_data.php?type=clinics&query=' + encodeURIComponent(addr));
-     const data = await res.json();
-     if (data.success) {
-        if (!data.data || data.data.length === 0) { container.innerHTML = '<div class="empty-state">No clinics found in this area.</div>'; return; }
-        container.innerHTML = data.data.map(c => `
-           <div class="card" style="padding:20px">
-              <div style="font-weight:800;font-size:18px;margin-bottom:5px">${c.clinic_name || c.name}</div>
-              <div style="color:var(--text-light);font-size:13px;margin-bottom:10px"><i class="fas fa-map-marker-alt"></i> ${c.clinic_address || c.address}</div>
-              <div style="display:flex;gap:15px;font-size:12px;margin-bottom:15px">
-                 <span><i class="fas fa-clock"></i> ${c.open_time || '09:00'} - ${c.close_time || '20:00'}</span>
-                 <span class="badge ${c.clinic_status==='open'?'badge-success':'badge-danger'}">${(c.clinic_status || 'open').toUpperCase()}</span>
-              </div>
-              <div style="margin-bottom:15px"><strong>Doctor:</strong> ${c.doctor_name || 'Dr. Professional'} | <strong>Fee:</strong> $${c.fees || '50'}</div>
-              <button class="btn btn-primary" onclick="openBookingModal(${c.id || '0'}, '${c.doctor_name || 'Doctor'}')">Book Online Appointment</button>
-           </div>
-        `).join('');
-     }
-  } catch (err) { container.innerHTML = '<div class="empty-state">Could not connect to clinic database.</div>'; }
+    const res = await fetch('../api/dashboard_data.php?' + p.toString(), { credentials: 'same-origin' });
+    const json = await res.json();
+    if (currentSeq !== clinicSuggestSeq) return;
+    if (json.success) showClinicSuggestions(json.data || []);
+  } catch (e) {
+    hideClinicSuggestions();
+  }
+}
+
+function initClinicAddressAutocomplete() {
+  const input = document.getElementById('clinicAddressLine');
+  if (!input || input.dataset.suggestReady === '1') return;
+  input.dataset.suggestReady = '1';
+  input.addEventListener('input', () => {
+    clinicGeoPoint = null;
+    if (clinicSuggestTimer) clearTimeout(clinicSuggestTimer);
+    clinicSuggestTimer = setTimeout(suggestClinicAddress, 280);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#clinicAddressSuggestions') && !e.target.closest('#clinicAddressLine')) {
+      hideClinicSuggestions();
+    }
+  });
+}
+
+function useMyLocationForClinics() {
+  const statusEl = document.getElementById('clinicGeoStatus');
+  if (!navigator.geolocation) {
+    showToast('Location is not supported in this browser.', 'warning');
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Getting location...';
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      clinicGeoPoint = { lat, lng };
+      try {
+        const p = new URLSearchParams({ type: 'clinic_reverse_geocode', lat: String(lat), lng: String(lng) });
+        const res = await fetch('../api/dashboard_data.php?' + p.toString(), { credentials: 'same-origin' });
+        const json = await res.json();
+        if (json.success && json.data) {
+          fillClinicAddressFields(json.data);
+        }
+      } catch (e) {}
+      if (statusEl) statusEl.textContent = 'Location selected. Searching clinics near you...';
+      await searchClinics({ lat, lng });
+      if (statusEl) statusEl.textContent = 'Showing nearby clinics from your current location.';
+    },
+    () => {
+      if (statusEl) statusEl.textContent = '';
+      showToast('Could not read location. Allow permission or enter address manually.', 'warning');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+}
+
+async function searchClinics(geo) {
+  const container = document.getElementById('clinicResults');
+  if (!container) return;
+  const city = document.getElementById('clinicCity')?.value?.trim() || '';
+  const activeGeo = geo || clinicGeoPoint;
+  if (!activeGeo && !city) {
+    showToast('Enter city/address or click "Use my location".', 'warning');
+    return;
+  }
+  const p = buildClinicSearchParams();
+  if (activeGeo && typeof activeGeo.lat === 'number' && typeof activeGeo.lng === 'number') {
+    p.set('lat', String(activeGeo.lat));
+    p.set('lng', String(activeGeo.lng));
+  }
+  container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Searching clinics and hospitals...</div>';
+
+  try {
+    const res = await fetch('../api/dashboard_data.php?' + p.toString(), { credentials: 'same-origin' });
+    const data = await res.json();
+    if (!data.success) {
+      container.innerHTML = '<div class="empty-state">' + escClinic(data.message || 'Search failed.') + '</div>';
+      return;
+    }
+    if (!data.data || data.data.length === 0) {
+      container.innerHTML = '<div class="empty-state">No clinics found for this location. Try another nearby area.</div>';
+      return;
+    }
+    container.innerHTML = data.data.map((c) => {
+      const name = escClinic(c.clinic_name || c.name);
+      const addr = escClinic(c.clinic_address || c.address || '');
+      const doc = escClinic(c.doctor_name || '—');
+      const fee = escClinic(c.fees || '—');
+      const contact = escClinic(c.contact || '—');
+      const mapsUrl = c.maps_url || ('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((c.clinic_name || '') + ' ' + (c.clinic_address || '')));
+      const webSafe = typeof c.website === 'string' && /^https?:\/\//i.test(c.website) ? c.website.replace(/"/g, '') : '';
+      const web = webSafe ? `<a href="${webSafe}" target="_blank" rel="noopener" style="font-size:13px;color:var(--primary-light)">Website</a>` : '';
+      const docForBook = JSON.stringify(c.doctor_name || 'Doctor');
+      const book = c.id > 0
+        ? `<button type="button" class="btn btn-primary" style="margin-top:10px" onclick="openBookingModal(${c.id}, ${docForBook})">Book appointment</button>`
+        : '<p style="font-size:12px;color:var(--muted);margin-top:10px">External listing — call or visit to book.</p>';
+      const src = c.source === 'platform'
+        ? '<span class="badge badge-success" style="font-size:10px">On platform</span>'
+        : '<span class="badge" style="font-size:10px;background:#e0e7ff;color:#3730a3">Live map data</span>';
+      return `
+        <div class="card" style="padding:20px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+            <div style="font-weight:800;font-size:17px">${name}</div>${src}
+          </div>
+          <div style="color:var(--text-light);font-size:13px;line-height:1.5"><i class="fas fa-map-marker-alt"></i> ${addr}</div>
+          <div style="font-size:13px"><strong>Doctor:</strong> ${doc}</div>
+          <div style="font-size:13px"><strong>Consultation / fees:</strong> ${fee}</div>
+          <div style="font-size:13px"><strong>Contact:</strong> ${contact !== '—' ? `<a href="tel:${String(c.contact).replace(/\s/g, '')}">${contact}</a>` : contact}</div>
+          ${web}
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center">
+            <a class="btn" style="background:#ecfdf5;color:#166534;text-decoration:none;display:inline-flex;align-items:center;gap:8px" href="${mapsUrl.replace(/"/g, '%22')}" target="_blank" rel="noopener"><i class="fas fa-directions"></i> Open in Google Maps</a>
+          </div>
+          ${book}
+        </div>`;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="empty-state">Could not load clinics. Check your internet and try again.</div>';
+  }
 }
 
 // ---- Doctor: Actions ----
@@ -1083,7 +1262,21 @@ async function initDashboard() {
        }
    }
 
-   if (document.getElementById('medicineList')) loadMedicines();
+   if (document.getElementById('medicineList')) {
+     loadMedicines();
+     if (role === 'patient') {
+       const pingReminders = () => {
+         fetch('../api/patient_reminder_ping.php', { credentials: 'same-origin' })
+           .then((r) => r.json())
+           .then((j) => {
+             if (j.success && j.dispatched > 0 && typeof loadMedicines === 'function') loadMedicines();
+           })
+           .catch(() => {});
+       };
+       setTimeout(pingReminders, 8000);
+       setInterval(pingReminders, 60000);
+     }
+   }
    if (document.getElementById('userManagementTable')) loadUserList();
    if (document.getElementById('patientAppointmentsList')) loadPatientAppointments();
    if (document.getElementById('patientReportsList')) loadPatientReports();
@@ -1092,6 +1285,7 @@ async function initDashboard() {
    if (document.getElementById('doctorScheduleRows')) loadDoctorSchedule();
    if (document.getElementById('doctorPatientsList')) loadDoctorPatients();
    if (document.getElementById('doctorProfileForm')) loadDoctorProfile();
+   if (document.getElementById('clinicAddressLine')) initClinicAddressAutocomplete();
    if (typeof initMedicineSuggestions === 'function') initMedicineSuggestions();
    if (typeof loadMedicineAdherenceSummary === 'function') loadMedicineAdherenceSummary();
 }

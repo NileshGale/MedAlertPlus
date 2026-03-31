@@ -25,12 +25,37 @@ function reminderSlotToHi(string $raw): string
     if ($raw === '') {
         return '';
     }
-    if (preg_match('/^(\d{1,2}):(\d{2})$/', $raw, $m)) {
+    if (preg_match('/^(\d{1,2}):(\d{2})(?::\d{2})?$/', $raw, $m)) {
         return sprintf('%02d:%02d', (int) $m[1], (int) $m[2]);
     }
     $ts = strtotime($raw);
 
     return $ts ? date('H:i', $ts) : '';
+}
+
+/**
+ * True if local clock is within [slot start, slot start + window) — catches cron that misses the exact minute.
+ */
+function reminderSlotIsDueWithinWindow(string $raw, string $timezone, int $windowMinutes = 6): bool
+{
+    $slotHi = reminderSlotToHi($raw);
+    if ($slotHi === '') {
+        return false;
+    }
+    try {
+        $tzObj = new DateTimeZone($timezone);
+    } catch (Exception $e) {
+        return false;
+    }
+    $now = new DateTimeImmutable('now', $tzObj);
+    $today = $now->format('Y-m-d');
+    $slotStart = DateTimeImmutable::createFromFormat('Y-m-d H:i', $today . ' ' . $slotHi, $tzObj);
+    if ($slotStart === false) {
+        return false;
+    }
+    $windowEnd = $slotStart->modify('+' . max(1, $windowMinutes) . ' minutes');
+
+    return $now >= $slotStart && $now < $windowEnd;
 }
 
 function resolveReminderWhatsapp(array $rem): string
