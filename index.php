@@ -364,8 +364,8 @@
             <li><a href="#features">Features</a></li>
             <li><a href="#about">About</a></li>
             <li><a href="#doctors">Doctors</a></li>
-            <li><a href="login.html">Login</a></li>
-            <li><a href="register.html" class="btn-nav">Get Started</a></li>
+            <li><a href="login.php">Login</a></li>
+            <li><a href="register.php" class="btn-nav">Get Started</a></li>
         </ul>
     </nav>
 
@@ -376,8 +376,8 @@
             <p>Your all-in-one platform for medical reminders, symptom checking, and effortless clinical appointments. Stay ahead of your health with Med-Alert-Plus.</p>
             
             <div class="hero-btns">
-                <a href="register.html" class="btn-main btn-primary">Start Your Health Journey <i class="fas fa-arrow-right"></i></a>
-                <a href="login.html" class="btn-main btn-outline">Explore Dashboard</a>
+                <a href="register.php" class="btn-main btn-primary">Start Your Health Journey <i class="fas fa-arrow-right"></i></a>
+                <a href="login.php" class="btn-main btn-outline">Explore Dashboard</a>
             </div>
 
             <div class="hero-stats">
