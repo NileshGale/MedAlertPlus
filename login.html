@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Med-Alert-Plus | Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="auth-page">
+
+    <div class="auth-wrapper">
+        <div class="auth-left">
+            <div class="brand">
+                <h1>Med-Alert-Plus</h1>
+                <p>Advanced Medical Management & AI Symptom Checker</p>
+            </div>
+            <div class="illustration">
+                <!-- Placeholder for an illustration or dynamic gradient box -->
+               <div class="glass-shape"></div>
+            </div>
+        </div>
+
+        <div class="auth-right">
+            <div class="auth-box glass-panel">
+                <h2>Welcome Back</h2>
+                <p class="subtitle">Log in to your dashboard</p>
+
+                <div id="loginAlert" class="alert hidden"></div>
+
+                <form id="loginForm">
+                    <input type="hidden" name="action" value="login">
+                    
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" required placeholder="Enter your email">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required placeholder="Enter your password">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block" id="loginBtn">
+                        Sign In
+                    </button>
+                    
+                    <div class="form-footer">
+                        <span>Already have an account?</span>
+                        <a href="login.html">Sign In</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/main.js"></script>
+</body>
+</html>

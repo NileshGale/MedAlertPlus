@@ -1,0 +1,524 @@
+<?php
+session_start();
+require_once '../config/db.php';
+
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'patient') {
+    header("Location: ../index.php");
+    exit;
+}
+
+$userId = $_SESSION['user_id'];
+$profileId = $_SESSION['profile_id'];
+$userName = $_SESSION['user_name'];
+
+// 1. Fetch Stats
+$totalAppt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ?");
+$totalAppt->execute([$profileId]);
+$totalAppt = $totalAppt->fetchColumn();
+
+$totalMeds = $pdo->prepare("SELECT COUNT(*) FROM medicine_reminders WHERE patient_id = ? AND is_active = 1");
+$totalMeds->execute([$profileId]);
+$totalMeds = $totalMeds->fetchColumn();
+
+$pendingAppt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ? AND status='pending'");
+$pendingAppt->execute([$profileId]);
+$pendingAppt = $pendingAppt->fetchColumn();
+
+$sympChecks = $pdo->prepare("SELECT COUNT(*) FROM symptom_checks WHERE patient_id = ?");
+$sympChecks->execute([$profileId]);
+$sympChecks = $sympChecks->fetchColumn();
+
+// 2. Upcoming Appointments
+$stmt = $pdo->prepare("SELECT a.*, u.name as doctor_name, d.specialization 
+                       FROM appointments a 
+                       JOIN doctors d ON a.doctor_id = d.id 
+                       JOIN users u ON d.user_id = u.id 
+                       WHERE a.patient_id = ? AND a.appointment_date >= CURDATE() 
+                       ORDER BY a.appointment_date ASC, a.appointment_time ASC LIMIT 5");
+$stmt->execute([$profileId]);
+$upcoming = $stmt->fetchAll();
+
+// 3. Medicines
+$stmt = $pdo->prepare("SELECT * FROM medicine_reminders WHERE patient_id = ? AND is_active = 1 LIMIT 5");
+$stmt->execute([$profileId]);
+$medicines = $stmt->fetchAll();
+
+// 4. Notifications
+$stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 15");
+$stmt->execute([$userId]);
+$notifications = $stmt->fetchAll();
+$unreadCount = count(array_filter($notifications, function($n) { return !$n['is_read']; }));
+
+// 5. Patient Data (for pre-filling WhatsApp)
+$patData = $pdo->prepare("SELECT whatsapp_number FROM patients WHERE id = ?");
+$patData->execute([$profileId]);
+$patContact = $patData->fetch();
+$whatsappNumber = $patContact['whatsapp_number'] ?? '';
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patient Dashboard — Med Alert Plus</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root {
+  --primary: #1e40af; --primary-light: #3b82f6; --success: #10b981; --warning: #f59e0b;
+  --danger: #ef4444; --text: #1e293b; --text-light: #475569; --muted: #94a3b8;
+  --bg: #f8fafc; --sidebar-bg: #0f172a; --card: #ffffff; --border: #e2e8f0;
+  --sidebar-w: 280px; --header-h: 72px; --rs: 12px; --transition: .25s ease;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+/* Medicine Suggestions Styles */
+.suggestion-box {
+  position: absolute;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1001;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  display: none;
+  margin-top: 5px;
+}
+.suggestion-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+.suggestion-item:hover {
+  background: var(--bg);
+  color: var(--primary);
+}
+.suggestion-header {
+  padding: 8px 15px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.dashboard-layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: var(--sidebar-w); background: var(--sidebar-bg); color: #fff;
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 1000;
+  display: flex; flex-direction: column; transition: transform var(--transition);
+}
+.sidebar-brand { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); text-decoration: none; color: #fff; }
+.sb-logo-icon { width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 10px; }
+.sidebar-user { padding: 20px 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 12px; }
+.su-avatar { width: 40px; height: 40px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.su-name { font-weight: 600; font-size: 14px; }
+.sidebar-nav { flex: 1; padding: 16px; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; width: 100%; border: none;
+  background: transparent; color: #94a3b8; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500; transition: 0.2s;
+}
+.nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.nav-item.active { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+.main-content { flex: 1; margin-left: var(--sidebar-w); transition: margin var(--transition); }
+.top-bar { height: var(--header-h); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 900; }
+.page-title { font-weight: 800; font-size: 20px; color: var(--text); }
+.top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.page-content { padding: 32px; max-width: 1400px; margin: 0 auto; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 32px; }
+.stat-card { background: var(--card); padding: 24px; border-radius: var(--rs); border: 1px solid var(--border); display: flex; align-items: center; gap: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.si-blue { background: #eff6ff; color: #3b82f6; }
+.si-green { background: #ecfdf5; color: #10b981; }
+.si-orange { background: #fff7ed; color: #f59e0b; }
+.si-purple { background: #f5f3ff; color: #8b5cf6; }
+.stat-num { font-size: 24px; font-weight: 800; }
+.stat-label { font-size: 13px; color: var(--muted); font-weight: 600; }
+.grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+.card { background: var(--card); border-radius: var(--rs); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.card-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
+.card-body { padding: 24px; }
+.btn { padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid transparent; text-decoration: none; font-family: inherit; }
+.btn-primary { background: var(--primary); color: #fff; }
+.badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+.badge-info { background: #dbeafe; color: #1e40af; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+.notif-panel { position: absolute; top: 80px; right: 32px; width: 350px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 1000; overflow: hidden; }
+.notif-panel-hdr { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 15px; }
+.notif-item { display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: 0.2s; }
+.notif-item.unread { background: #f0f7ff; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+.sidebar-footer { padding: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
+.logout-btn {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  width: 100%; border-radius: 8px; color: #fca5a5; text-decoration: none;
+  font-size: 14px; font-weight: 600; transition: 0.2s; background: rgba(239,68,68,0.1);
+}
+.logout-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+[data-theme="dark"] {
+  --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --text-light: #cbd5e1; --border: #334155;
+}
+.sos-btn { background: var(--danger); color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 800; cursor: pointer; animation: pulse 2s infinite; }
+@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+.theme-btn { background: var(--bg); border: 1px solid var(--border); width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+/* Toast Notification Styles */
+.toast-container {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.toast {
+  background: var(--card);
+  color: var(--text);
+  padding: 16px 24px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  border-left: 4px solid var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+  animation: slideIn 0.3s ease forwards;
+  transition: 0.3s;
+}
+.toast-success { border-left-color: var(--success); }
+.toast-error { border-left-color: var(--danger); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="dashboard-layout">
+<aside class="sidebar" id="sidebar">
+  <a class="sidebar-brand" href="#"><div class="sb-logo-icon"><i class="fas fa-shield-heart"></i></div><div class="sb-logo-text"><span class="name">Med Alert Plus</span><span class="tag">Patient Portal</span></div></a>
+  <div class="sidebar-user">
+    <div class="su-avatar"><?= strtoupper($userName[0]) ?></div>
+    <div class="su-info"><div class="su-name"><?= htmlspecialchars($userName) ?></div><div class="su-role">Patient</div></div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="showTab('overview')"><i class="fas fa-home"></i> Overview</button>
+    <button class="nav-item" onclick="showTab('appointments')"><i class="fas fa-calendar-check"></i> Appointments</button>
+    <button class="nav-item" onclick="showTab('medicines')"><i class="fas fa-pills"></i> Medicine Reminders</button>
+    <button class="nav-item" onclick="showTab('symptoms')"><i class="fas fa-stethoscope"></i> Symptom Checker</button>
+    <button class="nav-item" onclick="showTab('clinics')"><i class="fas fa-hospital"></i> Find Clinics</button>
+    <button class="nav-item" onclick="showTab('analytics')"><i class="fas fa-chart-line"></i> Health Analytics</button>
+    <button class="nav-item" onclick="showTab('reports')"><i class="fas fa-file-medical"></i> Medical Reports</button>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="nav-item" onclick="showTab('profile')"><i class="fas fa-user-circle"></i> Profile</button>
+    <a href="../auth/auth.php?action=logout_get" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+  </div>
+</aside>
+<div class="main-content">
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <div><div class="page-title" id="pageTitle">Dashboard Overview</div><div class="page-subtitle" id="pageSubtitle">Welcome back, <?= htmlspecialchars($userName) ?>!</div></div>
+    </div>
+    <div class="top-bar-right">
+      <button class="sos-btn" onclick="triggerSOS()"><i class="fas fa-exclamation-triangle"></i> SOS</button>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeToggle"><i class="fas fa-moon"></i></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fas fa-bell"></i><?php if($unreadCount > 0): ?><span class="notif-badge"><?= $unreadCount ?></span><?php endif; ?></button>
+      <div class="top-avatar"><?= strtoupper($userName[0]) ?></div>
+    </div>
+  </header>
+
+  <div id="notifPanel" class="notif-panel" style="display:none">
+    <div class="notif-panel-hdr"><span>Notifications</span></div>
+    <div id="notifList">
+      <?php foreach($notifications as $n): ?>
+        <div class="notif-item <?= $n['is_read'] ? '' : 'unread' ?>">
+          <div class="ni-body">
+            <div class="ni-title"><?= htmlspecialchars($n['title']) ?></div>
+            <div class="ni-msg"><?= htmlspecialchars($n['message']) ?></div>
+            <div class="ni-time"><?= $n['created_at'] ?></time>
+          </div>
+        </div>
+      <?php endforeach; if(empty($notifications)) echo '<div class="empty-state">No new notifications</div>'; ?>
+    </div>
+  </div>
+
+  <div class="page-content">
+    <div class="tab-pane active" id="tab-overview">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-icon si-blue"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num"><?= $totalAppt ?></div><div class="stat-label">Total Appointments</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-green"><i class="fas fa-pills"></i></div><div class="stat-info"><div class="stat-num"><?= $totalMeds ?></div><div class="stat-label">Active Reminders</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-orange"><i class="fas fa-clock"></i></div><div class="stat-info"><div class="stat-num"><?= $pendingAppt ?></div><div class="stat-label">Pending</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-purple"><i class="fas fa-stethoscope"></i></div><div class="stat-info"><div class="stat-num"><?= $sympChecks ?></div><div class="stat-label">Checks</div></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">Upcoming Appointments</div>
+          <div class="card-body">
+            <?php foreach($upcoming as $a): ?>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+                <div style="flex:1">
+                  <div style="font-weight:700">Dr. <?= htmlspecialchars($a['doctor_name']) ?></div>
+                  <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($a['specialization']) ?> · <?= $a['appointment_date'] ?></div>
+                </div>
+                <span class="badge badge-info"><?= $a['status'] ?></span>
+              </div>
+            <?php endforeach; if(empty($upcoming)) echo '<div class="empty-state">No upcoming appointments</div>'; ?>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Medicine Reminders</div>
+          <div class="card-body">
+            <?php foreach($medicines as $m): ?>
+              <div id="reminder-<?= $m['id'] ?>" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+                <div style="flex:1">
+                  <div style="font-weight:700"><?= htmlspecialchars($m['medicine_name']) ?></div>
+                  <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($m['dosage']) ?> · <?= htmlspecialchars($m['frequency']) ?></div>
+                </div>
+                <button class="btn" onclick="deleteMedicine(<?= $m['id'] ?>, '<?= addslashes($m['medicine_name']) ?>')" style="color:var(--danger);background:rgba(239,68,68,0.1);padding:5px 10px;border-radius:6px;border:none;cursor:pointer"><i class="fas fa-trash"></i></button>
+              </div>
+            <?php endforeach; if(empty($medicines)) echo '<div class="empty-state">No active reminders</div>'; ?>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:24px"><div class="card-header">Health Trends</div><div class="card-body"><div style="height:250px"><canvas id="healthChart"></canvas></div></div></div>
+    </div>
+
+    <!-- Medicines Tab -->
+    <div class="tab-pane" id="tab-medicines">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">My Medicine Reminders</div>
+          <div class="card-body" id="medicineList">
+             <!-- AJAX Loaded -->
+             <div class="empty-state">Loading reminders...</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Add New Reminder (Set Timer)</div>
+          <div class="card-body">
+             <form id="medicineForm">
+                <input type="hidden" name="action" value="add_medicine">
+                <div style="margin-bottom:15px; position:relative;">
+                   <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Medicine Name</label>
+                   <input type="text" name="medicine_name" id="medicine_name_input" autocomplete="off" required placeholder="e.g. Paracetamol" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   <div id="medicine-suggestions" class="suggestion-box"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Dosage</label>
+                      <input type="text" name="dosage" required placeholder="e.g. 500mg" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Frequency</label>
+                      <select name="frequency" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                         <option value="daily">Daily</option>
+                         <option value="weekly">Weekly</option>
+                         <option value="monthly">Monthly</option>
+                      </select>
+                   </div>
+                </div>
+                <div id="reminderTimesContainer" style="margin-bottom:15px">
+                   <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Reminder Times (Set Timers)</label>
+                   <div style="display:flex;gap:10px;margin-bottom:10px">
+                      <input type="time" name="times[]" required style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                      <button type="button" onclick="addTimeField()" style="background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;"><i class="fas fa-plus"></i></button>
+                   </div>
+                </div>
+                <div style="display:flex;gap:20px;margin-bottom:20px">
+                   <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="send_email" value="1" checked> Email Notify</label>
+                   <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="send_whatsapp" value="1"> WhatsApp Notify</label>
+                </div>
+                <div id="whatsappField" style="margin-bottom:20px; display: <?= $whatsappNumber ? 'block' : 'block' ?>;">
+                   <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">WhatsApp Number</label>
+                   <input type="text" name="whatsapp_number" value="<?= htmlspecialchars($whatsappNumber) ?>" placeholder="e.g. +1234567890" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Save Reminder</button>
+             </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Symptoms Tab -->
+    <div class="tab-pane" id="tab-symptoms">
+       <div class="card" style="max-width:800px;margin:0 auto">
+          <div class="card-header">AI Symptom Checker</div>
+          <div class="card-body">
+             <div id="symptomStep1">
+                <p style="margin-bottom:20px;color:var(--text-light)">Enter the number of symptoms you are feeling today.</p>
+                <div style="display:flex;gap:15px">
+                   <input type="number" id="symptomCount" min="1" max="10" value="1" style="width:100px;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   <button class="btn btn-primary" onclick="generateSymptomInputs()">Next</button>
+                </div>
+             </div>
+             <form id="symptomCheckerForm" style="display:none">
+                <div id="symptomInputsContainer" style="margin-bottom:20px"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Analyze Symptoms</button>
+             </form>
+             <div id="symptomResult" style="display:none;margin-top:30px;padding:25px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;">
+                <h3 style="color:#0369a1;margin-bottom:15px"><i class="fas fa-info-circle"></i> Possible Condition: <span id="resDisease">...</span></h3>
+                <div style="margin-bottom:15px"><strong>Recommended Medicines:</strong> <span id="resMeds">...</span></div>
+                <div style="margin-bottom:20px"><strong>Home Remedies:</strong> <p id="resRemedies" style="margin-top:5px;font-size:14px;color:var(--text-light)"></p></div>
+                <div style="display:flex;gap:15px">
+                   <button class="btn" style="background:#fff;border:1px solid #bae6fd;color:#0369a1" onclick="resetSymptomChecker()">Start Over</button>
+                   <button class="btn btn-primary" onclick="showTab('clinics')">Find Doctor</button>
+                </div>
+             </div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Health Analytics Tab -->
+    <div class="tab-pane" id="tab-analytics">
+       <div style="display:grid;grid-template-columns: 1fr 1fr; gap:25px; margin-bottom:25px">
+          <div class="card">
+             <div class="card-header">Log Daily Vitals</div>
+             <div class="card-body">
+                <form id="vitalsForm">
+                   <input type="hidden" name="action" value="add_vitals">
+                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+                      <div>
+                         <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Weight (kg)</label>
+                         <input type="number" step="0.1" name="weight" placeholder="e.g. 70.5" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                      </div>
+                      <div>
+                         <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Height (cm)</label>
+                         <input type="number" step="0.1" name="height" placeholder="e.g. 175" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                      </div>
+                   </div>
+                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+                      <div>
+                         <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">BP Systolic</label>
+                         <input type="number" name="bp_systolic" placeholder="e.g. 120" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                      </div>
+                      <div>
+                         <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">BP Diastolic</label>
+                         <input type="number" name="bp_diastolic" placeholder="e.g. 80" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                      </div>
+                   </div>
+                   <div style="margin-bottom:15px">
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Blood Sugar (mg/dL)</label>
+                      <input type="number" step="0.1" name="sugar_level" placeholder="e.g. 95" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <div style="margin-bottom:20px">
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Log Date</label>
+                      <input type="date" name="log_date" value="<?= date('Y-m-d') ?>" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <button type="submit" class="btn btn-primary" style="width:100%">Save Vitals</button>
+                </form>
+             </div>
+          </div>
+          <div class="card">
+             <div class="card-header">Health Summary & BMI</div>
+             <div class="card-body" id="vitalsSummary">
+                <div class="empty-state">Loading your health data...</div>
+             </div>
+          </div>
+       </div>
+       
+       <div class="card">
+          <div class="card-header">Health Trends (Last 30 Days)</div>
+          <div class="card-body">
+             <div style="display:grid;grid-template-columns:1.2fr 1fr; gap:30px">
+                <div style="height:350px"><canvas id="mainVitalsChart"></canvas></div>
+                <div style="height:350px"><canvas id="sugarChart"></canvas></div>
+             </div>
+          </div>
+       </div>
+    </div>
+
+    <!-- Clinics Tab -->
+    <div class="tab-pane" id="tab-clinics">
+       <div class="card">
+          <div class="card-header">Search Doctor Clinics</div>
+          <div class="card-body">
+             <div style="display:flex;gap:15px;margin-bottom:30px">
+                <input type="text" id="clinicAddress" placeholder="Enter your city or area..." style="flex:1;padding:12px;border:1px solid var(--border);border-radius:10px;">
+                <button class="btn btn-primary" onclick="searchClinics()"><i class="fas fa-search"></i> Search Nearby</button>
+             </div>
+             <div id="clinicResults" class="grid-2" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+                <div class="empty-state">Search to see clinics near your location</div>
+             </div>
+          </div>
+       </div>
+    </div>
+  </div>
+
+  <!-- Booking Modal -->
+  <div id="bookingModal" class="modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:none;align-items:center;justify-content:center;">
+     <div class="card" style="width:100%;max-width:500px">
+        <div class="card-header"><span>Book Appointment</span><button onclick="closeModal('bookingModal')" style="border:none;background:none;cursor:pointer"><i class="fas fa-times"></i></button></div>
+        <div class="card-body">
+           <form id="appointmentForm">
+              <input type="hidden" name="action" value="book_appointment">
+              <input type="hidden" name="doctor_id" id="bookDocId">
+              <div style="margin-bottom:15px">
+                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Doctor</label>
+                 <input type="text" id="bookDocName" disabled style="width:100%;padding:10px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">
+              </div>
+              <div style="margin-bottom:15px">
+                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Appointment Type</label>
+                 <select name="type" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                    <option value="physical">Physical Assessment (Clinic Visit)</option>
+                    <option value="online">Live Assessment (Google Meet)</option>
+                 </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+                 <div>
+                    <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Preferred Date</label>
+                    <input type="date" name="date" required min="<?= date('Y-m-d') ?>" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                 </div>
+                 <div>
+                    <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Preferred Time</label>
+                    <input type="time" name="time" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                 </div>
+              </div>
+              <div style="margin-bottom:20px">
+                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Notes (Symptoms/Reason)</label>
+                 <textarea name="notes" placeholder="Optional notes for the doctor..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;height:80px;"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width:100%">Confirm Booking</button>
+           </form>
+        </div>
+     </div>
+  </div>
+  </div>
+  </div>
+</div>
+<div id="toastContainer" class="toast-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;"></div>
+<script src="../assets/js/dashboard.js"></script>
+<script>
+function initHealthAnalytics() {
+  if (typeof loadHealthAnalytics === 'function') loadHealthAnalytics();
+}
+
+function toggleWhatsAppField() {
+    const chk = document.querySelector('input[name="send_whatsapp"]');
+    const field = document.getElementById('whatsappField');
+    if (chk && field) {
+        field.style.display = chk.checked ? 'block' : 'none';
+        const input = field.querySelector('input');
+        if (input) input.required = chk.checked;
+    }
+}
+
+document.addEventListener('change', (e) => {
+    if (e.target.name === 'send_whatsapp') toggleWhatsAppField();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    initHealthAnalytics();
+    toggleWhatsAppField();
+});
+function toggleNotifPanel() { const p = document.getElementById('notifPanel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; }
+</script>
+</body>
+</html>

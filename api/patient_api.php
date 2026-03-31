@@ -1,0 +1,272 @@
+<?php
+session_start();
+require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/mail.php';
+require_once __DIR__ . '/twilio_helper.php';
+header('Content-Type: application/json');
+
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'patient') {
+    echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit;
+}
+$userId    = $_SESSION['user_id'];
+$profileId = $_SESSION['profile_id'];
+$action    = $_POST['action'] ?? '';
+
+switch ($action) {
+    case 'book_appointment':    bookAppointment();    break;
+    case 'cancel_appointment':  cancelAppointment();  break;
+    case 'add_medicine':        addMedicine();        break;
+    case 'edit_medicine':       editMedicine();       break;
+    case 'delete_medicine':     deleteMedicine();     break;
+    case 'toggle_medicine':     toggleMedicine();     break;
+    case 'save_symptom_check':  saveSymptomCheck();   break;
+    case 'upload_report':       uploadReport();       break;
+    case 'delete_report':       deleteReport();       break;
+    case 'update_profile':      updateProfile();      break;
+    case 'change_password':     changePassword();     break;
+    case 'mark_notif_read':     markNotifRead();      break;
+    case 'add_vitals':          addVitals();          break;
+    case 'delete_vitals':       deleteVitals();       break;
+    default: echo json_encode(['success'=>false,'message'=>'Invalid action']);
+}
+
+function bookAppointment() {
+    global $pdo, $profileId;
+    $docId = intval($_POST['doctor_id'] ?? 0);
+    $type  = in_array($_POST['type']??'', ['online','physical']) ? $_POST['type'] : 'physical';
+    $date  = $_POST['date'] ?? '';
+    $time  = $_POST['time'] ?? '';
+    $notes = trim($_POST['notes'] ?? '');
+    if (!$docId || !$date || !$time) { echo json_encode(['success'=>false,'message'=>'All required fields must be filled.']); return; }
+    if (strtotime($date) < strtotime(date('Y-m-d'))) { echo json_encode(['success'=>false,'message'=>'Cannot book an appointment in the past.']); return; }
+
+    // Check if slot already taken
+    $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id=? AND appointment_date=? AND appointment_time=? AND status NOT IN ('cancelled')");
+    $check->execute([$docId, $date, $time]);
+    if ($check->fetch()) { echo json_encode(['success'=>false,'message'=>'This time slot is already booked. Please choose another.']); return; }
+
+    $stmt = $pdo->prepare("INSERT INTO appointments (patient_id,doctor_id,type,appointment_date,appointment_time,patient_notes,status) VALUES (?,?,?,?,?,?,'pending')");
+    $stmt->execute([$profileId, $docId, $type, $date, $time, $notes]);
+    $apptId = $pdo->lastInsertId();
+
+    // Notify doctor
+    $docInfo = $pdo->prepare("SELECT d.*, u.name as doc_name, u.id as user_id FROM doctors d JOIN users u ON d.user_id=u.id WHERE d.id=?");
+    $docInfo->execute([$docId]); $doc = $docInfo->fetch();
+    $patInfo = $pdo->prepare("SELECT u.name FROM patients p JOIN users u ON p.user_id=u.id WHERE p.id=?");
+    $patInfo->execute([$profileId]); $pat = $patInfo->fetch();
+
+    if ($doc) {
+        $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'info')")
+            ->execute([$doc['user_id'], 'New Appointment Request', ($pat['name']??'A patient') . ' booked a ' . $type . ' appointment on ' . date('M d, Y', strtotime($date)) . ' at ' . date('h:i A', strtotime($time))]);
+    }
+    echo json_encode(['success'=>true,'message'=>'Appointment booked successfully!','id'=>$apptId]);
+}
+
+function cancelAppointment() {
+    global $pdo, $profileId;
+    $id = intval($_POST['id'] ?? 0);
+    $stmt = $pdo->prepare("UPDATE appointments SET status='cancelled' WHERE id=? AND patient_id=?");
+    $stmt->execute([$id, $profileId]);
+    echo json_encode(['success'=>true]);
+}
+
+function addMedicine() {
+    global $pdo, $profileId, $userId;
+    $name      = trim($_POST['medicine_name'] ?? '');
+    $dosage    = trim($_POST['dosage'] ?? '');
+    $freq      = $_POST['frequency'] ?? 'once';
+    $times     = $_POST['reminder_times'] ?? '[]';
+    $start     = $_POST['start_date'] ?? null;
+    $end       = $_POST['end_date'] ?: null;
+    $notes     = trim($_POST['notes'] ?? '');
+    $sendEmail = intval($_POST['send_email'] ?? 1);
+    $sendWa    = intval($_POST['send_whatsapp'] ?? 0);
+    $waNumber  = trim($_POST['whatsapp_number'] ?? '');
+    
+    if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
+    
+    // Check if column exists, if not, add it (silent fail if already exists)
+    try {
+        $pdo->exec("ALTER TABLE medicine_reminders ADD COLUMN if not exists whatsapp_number VARCHAR(20) DEFAULT NULL AFTER send_whatsapp");
+    } catch(Exception $e) {}
+
+    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,1)");
+    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$sendWa,$waNumber]);
+    $newRemId = $pdo->lastInsertId();
+
+    // ---- Real-time Notification Trigger ----
+    try {
+        $patientInfo = $pdo->prepare("SELECT u.name, u.email, p.whatsapp_number as profile_wa 
+                                    FROM patients p 
+                                    JOIN users u ON p.user_id = u.id 
+                                    WHERE p.id = ?");
+        $patientInfo->execute([$profileId]);
+        $pat = $patientInfo->fetch();
+
+        if ($pat) {
+            $timesArr = json_decode($times, true);
+            $timeStr  = is_array($timesArr) ? implode(', ', $timesArr) : $times;
+            
+            // 1. Dashboard Notification
+            $notifMsg = "New Medicine Reminder Set: $name ($dosage) at $timeStr. Frequency: " . ucfirst($freq);
+            $pdo->prepare("INSERT INTO notifications (user_id, title, message, type) VALUES (?, 'Medicine Reminder Set', ?, 'info')")
+                ->execute([$userId, $notifMsg]);
+
+            // 2. Email Notification
+            if ($sendEmail && filter_var($pat['email'], FILTER_VALIDATE_EMAIL)) {
+                sendMedicineReminder($pat['email'], $pat['name'], $name, "$dosage ($timeStr, $freq)");
+            }
+
+            // 3. WhatsApp Notification
+            $targetWa = !empty($waNumber) ? $waNumber : $pat['profile_wa'];
+            if ($sendWa && !empty($targetWa)) {
+                sendWhatsAppReminder($targetWa, $name, "$dosage ($timeStr, $freq)");
+            }
+        }
+    } catch (Exception $e) {
+        // Log error but don't fail the entire request
+        error_log("Real-time notification failed: " . $e->getMessage());
+    }
+
+    echo json_encode(['success'=>true,'message'=>'Medicine reminder added! Immediate notification sent where selected.']);
+}
+
+function editMedicine() {
+    global $pdo, $profileId;
+    $id     = intval($_POST['id'] ?? 0);
+    $name   = trim($_POST['medicine_name'] ?? '');
+    $dosage = trim($_POST['dosage'] ?? '');
+    $freq   = $_POST['frequency'] ?? 'once';
+    $times  = $_POST['reminder_times'] ?? '[]';
+    $start  = $_POST['start_date'] ?? null;
+    $end    = $_POST['end_date'] ?: null;
+    $notes  = trim($_POST['notes'] ?? '');
+    $email  = intval($_POST['send_email'] ?? 1);
+    $wa     = intval($_POST['send_whatsapp'] ?? 0);
+    $waNumber = trim($_POST['whatsapp_number'] ?? '');
+    if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
+    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=? WHERE id=? AND patient_id=?");
+    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$wa,$waNumber,$id,$profileId]);
+    echo json_encode(['success'=>true]);
+}
+
+function deleteMedicine() {
+    global $pdo, $profileId;
+    $id = intval($_POST['id'] ?? 0);
+    $pdo->prepare("DELETE FROM medicine_reminders WHERE id=? AND patient_id=?")->execute([$id,$profileId]);
+    echo json_encode(['success'=>true]);
+}
+
+function toggleMedicine() {
+    global $pdo, $profileId;
+    $id     = intval($_POST['id'] ?? 0);
+    $active = intval($_POST['active'] ?? 0);
+    $pdo->prepare("UPDATE medicine_reminders SET is_active=? WHERE id=? AND patient_id=?")->execute([$active,$id,$profileId]);
+    echo json_encode(['success'=>true]);
+}
+
+function saveSymptomCheck() {
+    global $pdo, $profileId;
+    $symptoms  = trim($_POST['symptoms'] ?? '');
+    $diagnosis = trim($_POST['diagnosis'] ?? '');
+    $medicines = $_POST['medicines'] ?? '';
+    $remedies  = $_POST['remedies'] ?? '';
+    if (!$symptoms) { echo json_encode(['success'=>false]); return; }
+    $pdo->prepare("INSERT INTO symptom_checks (patient_id,symptoms,diagnosis,medicines,home_remedies) VALUES (?,?,?,?,?)")
+        ->execute([$profileId,$symptoms,$diagnosis,$medicines,$remedies]);
+    echo json_encode(['success'=>true]);
+}
+
+function uploadReport() {
+    global $pdo, $profileId;
+    if (!isset($_FILES['report'])) { echo json_encode(['success'=>false,'message'=>'No file received.']); return; }
+    $file = $_FILES['report'];
+    $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowed = ['pdf','doc','docx','jpg','jpeg','png'];
+    if (!in_array($ext, $allowed)) { echo json_encode(['success'=>false,'message'=>'File type not allowed.']); return; }
+    if ($file['size'] > 5*1024*1024) { echo json_encode(['success'=>false,'message'=>'File too large. Max 5MB.']); return; }
+    $uploadDir = __DIR__ . '/../uploads/reports/';
+    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+    $newName = 'report_' . $profileId . '_' . time() . '.' . $ext;
+    $dest    = $uploadDir . $newName;
+    if (!move_uploaded_file($file['tmp_name'], $dest)) { echo json_encode(['success'=>false,'message'=>'Upload failed.']); return; }
+    $pdo->prepare("INSERT INTO patient_reports (patient_id,file_name,file_path,file_type) VALUES (?,?,?,?)")
+        ->execute([$profileId, $file['name'], 'reports/' . $newName, $ext]);
+    echo json_encode(['success'=>true,'message'=>'Report uploaded successfully!']);
+}
+
+function deleteReport() {
+    global $pdo, $profileId;
+    $id   = intval($_POST['id'] ?? 0);
+    $stmt = $pdo->prepare("SELECT file_path FROM patient_reports WHERE id=? AND patient_id=?");
+    $stmt->execute([$id,$profileId]); $rep = $stmt->fetch();
+    if (!$rep) { echo json_encode(['success'=>false,'message'=>'Not found.']); return; }
+    $filePath = __DIR__ . '/../uploads/' . $rep['file_path'];
+    if (file_exists($filePath)) unlink($filePath);
+    $pdo->prepare("DELETE FROM patient_reports WHERE id=? AND patient_id=?")->execute([$id,$profileId]);
+    echo json_encode(['success'=>true]);
+}
+
+function updateProfile() {
+    global $pdo, $userId, $profileId;
+    $name      = trim($_POST['name'] ?? '');
+    $age       = intval($_POST['age'] ?? 0) ?: null;
+    $gender    = $_POST['gender'] ?? null;
+    $blood     = trim($_POST['blood_group'] ?? '') ?: null;
+    $disease   = trim($_POST['disease'] ?? '');
+    $address   = trim($_POST['address'] ?? '');
+    $phone     = trim($_POST['phone'] ?? '');
+    $whatsapp  = trim($_POST['whatsapp'] ?? '');
+    $emergency = trim($_POST['emergency'] ?? '');
+    if (!$name) { echo json_encode(['success'=>false,'message'=>'Name is required.']); return; }
+    $pdo->prepare("UPDATE users SET name=?,phone=? WHERE id=?")->execute([$name,$phone,$userId]);
+    $pdo->prepare("UPDATE patients SET age=?,gender=?,blood_group=?,disease=?,address=?,whatsapp_number=?,emergency_contact=? WHERE id=?")
+        ->execute([$age,$gender,$blood,$disease,$address,$whatsapp,$emergency,$profileId]);
+    echo json_encode(['success'=>true,'message'=>'Profile updated!']);
+}
+
+function changePassword() {
+    global $pdo, $userId;
+    $current = $_POST['current'] ?? '';
+    $new     = $_POST['new'] ?? '';
+    if (strlen($new) < 8) { echo json_encode(['success'=>false,'message'=>'Password must be at least 8 characters.']); return; }
+    $stmt = $pdo->prepare("SELECT password FROM users WHERE id=?");
+    $stmt->execute([$userId]); $user = $stmt->fetch();
+    if (!$user || !password_verify($current, $user['password'])) { echo json_encode(['success'=>false,'message'=>'Current password is incorrect.']); return; }
+    $hashed = password_hash($new, PASSWORD_BCRYPT, ['cost'=>12]);
+    $pdo->prepare("UPDATE users SET password=? WHERE id=?")->execute([$hashed,$userId]);
+    echo json_encode(['success'=>true]);
+}
+
+function markNotifRead() {
+    global $pdo, $userId;
+    $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=?")->execute([$userId]);
+    echo json_encode(['success'=>true]);
+}
+
+function addVitals() {
+    global $pdo, $profileId;
+    $weight   = floatval($_POST['weight'] ?? 0);
+    $height   = floatval($_POST['height'] ?? 0);
+    $bpSys    = intval($_POST['bp_systolic'] ?? 0);
+    $bpDia    = intval($_POST['bp_diastolic'] ?? 0);
+    $sugar    = floatval($_POST['sugar_level'] ?? 0);
+    $log_date = $_POST['log_date'] ?: date('Y-m-d');
+
+    if (!$weight && !$bpSys && !$sugar) {
+        echo json_encode(['success'=>false, 'message'=>'Please enter at least one vital metric.']);
+        return;
+    }
+
+    $stmt = $pdo->prepare("INSERT INTO patient_vitals (patient_id, weight, height, bp_systolic, bp_diastolic, sugar_level, log_date) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$profileId, $weight ?: null, $height ?: null, $bpSys ?: null, $bpDia ?: null, $sugar ?: null, $log_date]);
+    
+    echo json_encode(['success'=>true, 'message'=>'Vitals logged successfully!']);
+}
+
+function deleteVitals() {
+    global $pdo, $profileId;
+    $id = intval($_POST['id'] ?? 0);
+    $pdo->prepare("DELETE FROM patient_vitals WHERE id=? AND patient_id=?")->execute([$id, $profileId]);
+    echo json_encode(['success'=>true]);
+}

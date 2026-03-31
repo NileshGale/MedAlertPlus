@@ -1,0 +1,177 @@
+<?php
+session_start();
+require_once '../config/db.php';
+
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'doctor') {
+    header("Location: ../index.html");
+    exit;
+}
+
+$userId = $_SESSION['user_id'];
+$profileId = $_SESSION['profile_id'];
+$userName = $_SESSION['user_name'];
+
+// 1. Stats
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ?");
+$stmt->execute([$profileId]);
+$totalAppt = $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND status='pending'");
+$stmt->execute([$profileId]);
+$pendingAppt = $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = CURDATE()");
+$stmt->execute([$profileId]);
+$todayAppt = $stmt->fetchColumn();
+
+// 2. Today's Appointments
+$stmt = $pdo->prepare("SELECT a.*, u.name as patient_name 
+                       FROM appointments a 
+                       JOIN patients p ON a.patient_id = p.id 
+                       JOIN users u ON p.user_id = u.id 
+                       WHERE a.doctor_id = ? AND a.appointment_date = CURDATE() 
+                       ORDER BY a.appointment_time ASC");
+$stmt->execute([$profileId]);
+$todaySchedule = $stmt->fetchAll();
+
+// 3. Specialization
+$stmt = $pdo->prepare("SELECT * FROM doctors WHERE id = ?");
+$stmt->execute([$profileId]);
+$doctor = $stmt->fetch();
+$specialization = $doctor['specialization'];
+$clinicStatus = $doctor['clinic_status'];
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doctor Dashboard — Med Alert Plus</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root {
+  --primary: #1e40af; --primary-light: #3b82f6; --success: #10b981; --warning: #f59e0b;
+  --danger: #ef4444; --text: #1e293b; --text-light: #475569; --muted: #94a3b8;
+  --bg: #f8fafc; --sidebar-bg: #0f172a; --card: #ffffff; --border: #e2e8f0;
+  --sidebar-w: 280px; --header-h: 72px; --rs: 12px; --transition: .25s ease;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+.dashboard-layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: var(--sidebar-w); background: var(--sidebar-bg); color: #fff;
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 1000;
+  display: flex; flex-direction: column; transition: transform var(--transition);
+}
+.sidebar-brand { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); text-decoration: none; color: #fff; }
+.sb-logo-icon { width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 10px; }
+.sidebar-user { padding: 20px 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 12px; }
+.su-avatar { width: 40px; height: 40px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.su-name { font-weight: 600; font-size: 14px; }
+.main-content { flex: 1; margin-left: var(--sidebar-w); transition: margin var(--transition); }
+.top-bar { height: var(--header-h); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 900; }
+.page-title { font-weight: 800; font-size: 20px; color: var(--text); }
+.top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.page-content { padding: 32px; max-width: 1400px; margin: 0 auto; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 32px; }
+.stat-card { background: var(--card); padding: 24px; border-radius: var(--rs); border: 1px solid var(--border); display: flex; align-items: center; gap: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.stat-num { font-size: 24px; font-weight: 800; }
+.card { background: var(--card); border-radius: var(--rs); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.card-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
+.card-body { padding: 24px; }
+.badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+.badge-success { background: #dcfce7; color: #166534; }
+.badge-warning { background: #fef3c7; color: #92400e; }
+.sidebar-footer { padding: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
+.logout-btn {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  width: 100%; border-radius: 8px; color: #fca5a5; text-decoration: none;
+  font-size: 14px; font-weight: 600; transition: 0.2s; background: rgba(239,68,68,0.1);
+}
+.logout-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+</style>
+</head>
+<body>
+<div class="dashboard-layout">
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand"><div class="sb-logo-icon"><i class="fas fa-shield-heart"></i></div><div class="sb-logo-text"><span class="name">Med Alert Plus</span><span class="tag">Doctor Portal</span></div></div>
+  <div class="sidebar-user">
+    <div class="su-avatar"><?= strtoupper($userName[0]) ?></div>
+    <div class="su-info"><div class="su-name">Dr. <?= htmlspecialchars($userName) ?></div><div class="su-role"><?= htmlspecialchars($specialization) ?></div></div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="showTab('overview')"><i class="fas fa-home"></i> Overview</button>
+    <button class="nav-item" onclick="showTab('appointments')"><i class="fas fa-calendar-check"></i> Appointments</button>
+    <button class="nav-item" onclick="showTab('schedule')"><i class="fas fa-clock"></i> My Schedule</button>
+    <button class="nav-item" onclick="showTab('patients')"><i class="fas fa-users"></i> My Patients</button>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="nav-item" onclick="showTab('profile')"><i class="fas fa-user-md"></i> Profile</button>
+    <a href="../auth/auth.php?action=logout_get" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+  </div>
+</aside>
+<div class="main-content">
+  <header class="top-bar">
+    <div class="top-bar-left">
+       <div class="page-title" id="pageTitle">Doctor Dashboard</div>
+       <div class="page-subtitle" id="pageSubtitle">Manage your practice</div>
+    </div>
+    <div class="top-bar-right">
+      <div style="display:flex;align-items:center;gap:10px;margin-right:20px;padding:5px 15px;background:var(--bg);border:1px solid var(--border);border-radius:20px;">
+         <span style="font-size:12px;font-weight:700">Clinic Status:</span>
+         <div class="status-toggle" onclick="toggleClinicStatus()" style="cursor:pointer;display:flex;align-items:center;gap:5px;">
+            <span id="statusLabel" class="badge <?= $clinicStatus==='open'?'badge-success':'badge-danger' ?>" style="text-transform:uppercase"><?= $clinicStatus ?></span>
+         </div>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeToggle"><i class="fas fa-moon"></i></button>
+      <div class="top-avatar"><?= strtoupper($userName[0]) ?></div>
+    </div>
+  </header>
+  <div class="page-content">
+    <!-- Overview Tab -->
+    <div class="tab-pane active" id="tab-overview">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num"><?= $totalAppt ?></div><div class="stat-label">Total Appointments</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#fff7ed;color:#f59e0b"><i class="fas fa-hourglass-half"></i></div><div class="stat-info"><div class="stat-num"><?= $pendingAppt ?></div><div class="stat-label">Pending</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#ecfdf5;color:#10b981"><i class="fas fa-calendar-day"></i></div><div class="stat-info"><div class="stat-num"><?= $todayAppt ?></div><div class="stat-label">Today</div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">Today's Schedule</div>
+        <div class="card-body">
+          <?php foreach($todaySchedule as $s): ?>
+            <div style="display:flex;align-items:center;gap:15px;padding:15px 0;border-bottom:1px solid var(--border)">
+              <div style="flex:1">
+                <div style="font-weight:700"><?= htmlspecialchars($s['patient_name']) ?></div>
+                <div style="font-size:12px;color:var(--muted)"><?= $s['appointment_time'] ?> · <?= ucfirst($s['type']) ?></div>
+              </div>
+              <div style="display:flex;gap:10px">
+                 <?php if($s['type']==='online'): ?>
+                    <button class="btn" style="background:#dbeafe;color:#1e40af;border:none" onclick="manageMeetLink(<?= $s['id'] ?>, '<?= $s['meet_link'] ?>')"><i class="fas fa-video"></i> Meet</button>
+                 <?php endif; ?>
+                 <button class="btn btn-primary" onclick="manageAppointment(<?= $s['id'] ?>)"><i class="fas fa-edit"></i> Manage</button>
+              </div>
+            </div>
+          <?php endforeach; if(empty($todaySchedule)) echo '<div class="empty-state">No appointments today</div>'; ?>
+        </div>
+      </div>
+    </div>
+
+    <!-- Appointments Tab -->
+    <div class="tab-pane" id="tab-appointments">
+       <div class="card">
+          <div class="card-header">All Appointments</div>
+          <div class="card-body" id="allAppointmentsList">
+             <!-- AJAX Loaded -->
+             <div class="empty-state">Loading appointments...</div>
+          </div>
+       </div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="../assets/js/dashboard.js"></script>
+</body>
+</html>
