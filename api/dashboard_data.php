@@ -20,7 +20,26 @@ try {
     // Handle specific data type requests first
     switch ($type) {
         case 'medicines':
-            $stmt = $pdo->prepare("SELECT * FROM medicine_reminders WHERE patient_id = ? ORDER BY created_at DESC");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS medicine_adherence (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reminder_id INT NOT NULL,
+                patient_id INT NOT NULL,
+                taken_on DATE NOT NULL,
+                status ENUM('taken','skipped') NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_reminder_day (reminder_id, patient_id, taken_on),
+                INDEX idx_patient_day (patient_id, taken_on)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            $stmt = $pdo->prepare("SELECT mr.*,
+                                          ma.status AS today_status
+                                   FROM medicine_reminders mr
+                                   LEFT JOIN medicine_adherence ma
+                                     ON ma.reminder_id = mr.id
+                                    AND ma.patient_id = mr.patient_id
+                                    AND ma.taken_on = CURDATE()
+                                   WHERE mr.patient_id = ?
+                                   ORDER BY mr.created_at DESC");
             $stmt->execute([$profileId]);
             $response['data'] = $stmt->fetchAll();
             echo json_encode($response);
@@ -91,6 +110,126 @@ try {
                 $stmt->execute();
             }
             $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'patient_appointments':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT a.*, u.name AS doctor_name, d.specialization, d.clinic_name
+                                   FROM appointments a
+                                   JOIN doctors d ON a.doctor_id = d.id
+                                   JOIN users u ON d.user_id = u.id
+                                   WHERE a.patient_id = ?
+                                   ORDER BY a.appointment_date DESC, a.appointment_time DESC");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'patient_reports':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, uploaded_at
+                                   FROM patient_reports
+                                   WHERE patient_id = ?
+                                   ORDER BY uploaded_at DESC");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'patient_profile':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, p.age, p.gender, p.blood_group, p.disease, p.address, p.whatsapp_number, p.emergency_contact
+                                   FROM users u
+                                   JOIN patients p ON p.user_id = u.id
+                                   WHERE p.id = ?
+                                   LIMIT 1");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetch() ?: [];
+            echo json_encode($response);
+            exit;
+
+        case 'medicine_adherence_summary':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $pdo->exec("CREATE TABLE IF NOT EXISTS medicine_adherence (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reminder_id INT NOT NULL,
+                patient_id INT NOT NULL,
+                taken_on DATE NOT NULL,
+                status ENUM('taken','skipped') NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_reminder_day (reminder_id, patient_id, taken_on),
+                INDEX idx_patient_day (patient_id, taken_on)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            $summaryStmt = $pdo->prepare("SELECT 
+                    SUM(CASE WHEN status = 'taken' THEN 1 ELSE 0 END) AS taken_count,
+                    SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count
+                FROM medicine_adherence
+                WHERE patient_id = ?
+                  AND taken_on >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)");
+            $summaryStmt->execute([$profileId]);
+            $sum = $summaryStmt->fetch() ?: ['taken_count'=>0, 'skipped_count'=>0];
+            $taken = intval($sum['taken_count'] ?? 0);
+            $skipped = intval($sum['skipped_count'] ?? 0);
+            $total = $taken + $skipped;
+            $rate = $total > 0 ? round(($taken / $total) * 100) : 0;
+            $response['data'] = [
+                'taken' => $taken,
+                'skipped' => $skipped,
+                'weekly_rate' => $rate
+            ];
+            echo json_encode($response);
+            exit;
+
+        case 'doctor_appointments':
+            if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT a.*, u.name AS patient_name, u.phone AS patient_phone
+                                   FROM appointments a
+                                   JOIN patients p ON a.patient_id = p.id
+                                   JOIN users u ON p.user_id = u.id
+                                   WHERE a.doctor_id = ?
+                                   ORDER BY a.appointment_date DESC, a.appointment_time DESC");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'doctor_schedule':
+            if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT day_of_week, is_available, start_time, end_time, slot_duration
+                                   FROM doctor_schedules
+                                   WHERE doctor_id = ?
+                                   ORDER BY FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'doctor_patients':
+            if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group,
+                                          MAX(a.appointment_date) AS last_appointment
+                                   FROM appointments a
+                                   JOIN patients p ON a.patient_id = p.id
+                                   JOIN users u ON p.user_id = u.id
+                                   WHERE a.doctor_id = ?
+                                   GROUP BY p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group
+                                   ORDER BY last_appointment DESC");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'doctor_profile':
+            if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, d.specialization, d.qualification, d.experience_years, d.fees, d.clinic_name, d.clinic_address, d.clinic_phone, d.about, d.clinic_status
+                                   FROM users u
+                                   JOIN doctors d ON d.user_id = u.id
+                                   WHERE d.id = ?
+                                   LIMIT 1");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetch() ?: [];
             echo json_encode($response);
             exit;
     }

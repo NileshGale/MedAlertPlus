@@ -54,6 +54,34 @@ $patData = $pdo->prepare("SELECT whatsapp_number FROM patients WHERE id = ?");
 $patData->execute([$profileId]);
 $patContact = $patData->fetch();
 $whatsappNumber = $patContact['whatsapp_number'] ?? '';
+
+// 6. Next appointment for quick overview
+$stmt = $pdo->prepare("SELECT a.*, u.name AS doctor_name, d.specialization
+                       FROM appointments a
+                       JOIN doctors d ON a.doctor_id = d.id
+                       JOIN users u ON d.user_id = u.id
+                       WHERE a.patient_id = ? AND a.appointment_date >= CURDATE() AND a.status IN ('pending','confirmed')
+                       ORDER BY a.appointment_date ASC, a.appointment_time ASC
+                       LIMIT 1");
+$stmt->execute([$profileId]);
+$nextAppointment = $stmt->fetch();
+
+// 7. Latest vitals snapshot
+$stmt = $pdo->prepare("SELECT weight, bp_systolic, bp_diastolic, sugar_level, log_date
+                       FROM patient_vitals
+                       WHERE patient_id = ?
+                       ORDER BY log_date DESC, created_at DESC
+                       LIMIT 1");
+$stmt->execute([$profileId]);
+$latestVitals = $stmt->fetch();
+
+// 8. Quick health card data
+$stmt = $pdo->prepare("SELECT blood_group, disease, emergency_contact
+                       FROM patients
+                       WHERE id = ?
+                       LIMIT 1");
+$stmt->execute([$profileId]);
+$quickHealth = $stmt->fetch();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -127,7 +155,37 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 .main-content { flex: 1; margin-left: var(--sidebar-w); transition: margin var(--transition); }
 .top-bar { height: var(--header-h); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 900; }
 .page-title { font-weight: 800; font-size: 20px; color: var(--text); }
+.page-subtitle { font-size: 13px; color: var(--muted); }
+.top-bar-right { display: flex; align-items: center; gap: 10px; }
 .top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.notif-btn {
+  position: relative;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.notif-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  padding: 0 4px;
+}
 .page-content { padding: 32px; max-width: 1400px; margin: 0 auto; }
 .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 32px; }
 .stat-card { background: var(--card); padding: 24px; border-radius: var(--rs); border: 1px solid var(--border); display: flex; align-items: center; gap: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -166,6 +224,10 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 .sos-btn { background: var(--danger); color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 800; cursor: pointer; animation: pulse 2s infinite; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 .theme-btn { background: var(--bg); border: 1px solid var(--border); width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.quick-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.quick-btn { background: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; }
+.overview-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-top: 24px; }
+.timeline-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
 
 /* Toast Notification Styles */
 .toast-container {
@@ -252,43 +314,100 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 
   <div class="page-content">
     <div class="tab-pane active" id="tab-overview">
+      <div class="quick-actions">
+        <button class="btn quick-btn" onclick="showTab('appointments')"><i class="fas fa-calendar-plus"></i> Book Appointment</button>
+        <button class="btn quick-btn" onclick="showTab('medicines')"><i class="fas fa-pills"></i> Add Medicine</button>
+        <button class="btn quick-btn" onclick="showTab('symptoms')"><i class="fas fa-stethoscope"></i> Symptom Check</button>
+        <button class="btn quick-btn" onclick="showTab('reports')"><i class="fas fa-file-upload"></i> Upload Report</button>
+      </div>
+
       <div class="stats-row">
         <div class="stat-card"><div class="stat-icon si-blue"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num"><?= $totalAppt ?></div><div class="stat-label">Total Appointments</div></div></div>
         <div class="stat-card"><div class="stat-icon si-green"><i class="fas fa-pills"></i></div><div class="stat-info"><div class="stat-num"><?= $totalMeds ?></div><div class="stat-label">Active Reminders</div></div></div>
         <div class="stat-card"><div class="stat-icon si-orange"><i class="fas fa-clock"></i></div><div class="stat-info"><div class="stat-num"><?= $pendingAppt ?></div><div class="stat-label">Pending</div></div></div>
         <div class="stat-card"><div class="stat-icon si-purple"><i class="fas fa-stethoscope"></i></div><div class="stat-info"><div class="stat-num"><?= $sympChecks ?></div><div class="stat-label">Checks</div></div></div>
       </div>
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-header">Upcoming Appointments</div>
-          <div class="card-body">
-            <?php foreach($upcoming as $a): ?>
-              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
-                <div style="flex:1">
-                  <div style="font-weight:700">Dr. <?= htmlspecialchars($a['doctor_name']) ?></div>
-                  <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($a['specialization']) ?> · <?= $a['appointment_date'] ?></div>
+
+      <div class="overview-grid">
+        <div>
+          <div class="card">
+            <div class="card-header">Today Timeline</div>
+            <div class="card-body">
+              <?php if($nextAppointment): ?>
+                <div class="timeline-item">
+                  <div>
+                    <div style="font-weight:700">Appointment with Dr. <?= htmlspecialchars($nextAppointment['doctor_name']) ?></div>
+                    <div style="font-size:12px;color:var(--muted)"><?= $nextAppointment['appointment_date'] ?> <?= $nextAppointment['appointment_time'] ?> · <?= htmlspecialchars($nextAppointment['specialization']) ?></div>
+                  </div>
+                  <div>
+                    <?php if($nextAppointment['type'] === 'online' && !empty($nextAppointment['meet_link'])): ?>
+                      <a class="btn btn-primary" href="<?= htmlspecialchars($nextAppointment['meet_link']) ?>" target="_blank" rel="noopener">Join</a>
+                    <?php else: ?>
+                      <button class="btn" onclick="showTab('appointments')">View</button>
+                    <?php endif; ?>
+                  </div>
                 </div>
-                <span class="badge badge-info"><?= $a['status'] ?></span>
-              </div>
-            <?php endforeach; if(empty($upcoming)) echo '<div class="empty-state">No upcoming appointments</div>'; ?>
+              <?php endif; ?>
+
+              <?php foreach($medicines as $m): ?>
+                <div class="timeline-item">
+                  <div>
+                    <div style="font-weight:700"><?= htmlspecialchars($m['medicine_name']) ?></div>
+                    <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($m['dosage']) ?> · <?= htmlspecialchars($m['frequency']) ?></div>
+                  </div>
+                  <div>
+                    <button class="btn" style="background:#ecfdf5;color:#166534" onclick="markMedicineAdherence(<?= $m['id'] ?>, 'taken')">Taken</button>
+                  </div>
+                </div>
+              <?php endforeach; if(empty($medicines) && !$nextAppointment) echo '<div class="empty-state">No events for today.</div>'; ?>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:24px">
+            <div class="card-header">Upcoming Appointments</div>
+            <div class="card-body">
+              <?php foreach($upcoming as $a): ?>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+                  <div style="flex:1">
+                    <div style="font-weight:700">Dr. <?= htmlspecialchars($a['doctor_name']) ?></div>
+                    <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($a['specialization']) ?> · <?= $a['appointment_date'] ?> <?= $a['appointment_time'] ?></div>
+                  </div>
+                  <span class="badge badge-info"><?= $a['status'] ?></span>
+                </div>
+              <?php endforeach; if(empty($upcoming)) echo '<div class="empty-state">No upcoming appointments</div>'; ?>
+            </div>
           </div>
         </div>
-        <div class="card">
-          <div class="card-header">Medicine Reminders</div>
-          <div class="card-body">
-            <?php foreach($medicines as $m): ?>
-              <div id="reminder-<?= $m['id'] ?>" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
-                <div style="flex:1">
-                  <div style="font-weight:700"><?= htmlspecialchars($m['medicine_name']) ?></div>
-                  <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($m['dosage']) ?> · <?= htmlspecialchars($m['frequency']) ?></div>
-                </div>
-                <button class="btn" onclick="deleteMedicine(<?= $m['id'] ?>, '<?= addslashes($m['medicine_name']) ?>')" style="color:var(--danger);background:rgba(239,68,68,0.1);padding:5px 10px;border-radius:6px;border:none;cursor:pointer"><i class="fas fa-trash"></i></button>
-              </div>
-            <?php endforeach; if(empty($medicines)) echo '<div class="empty-state">No active reminders</div>'; ?>
+
+        <div>
+          <div class="card">
+            <div class="card-header">Personal Health Card</div>
+            <div class="card-body">
+              <div style="margin-bottom:8px"><strong>Blood Group:</strong> <?= htmlspecialchars($quickHealth['blood_group'] ?? '-') ?></div>
+              <div style="margin-bottom:8px"><strong>Chronic Condition:</strong> <?= htmlspecialchars($quickHealth['disease'] ?? '-') ?></div>
+              <div style="margin-bottom:8px"><strong>Emergency Contact:</strong> <?= htmlspecialchars($quickHealth['emergency_contact'] ?? '-') ?></div>
+              <button class="btn btn-primary" style="margin-top:8px" onclick="showTab('profile')">Update Profile</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:24px">
+            <div class="card-header">Latest Vitals Snapshot</div>
+            <div class="card-body">
+              <div style="margin-bottom:8px"><strong>Date:</strong> <?= htmlspecialchars($latestVitals['log_date'] ?? '-') ?></div>
+              <div style="margin-bottom:8px"><strong>Weight:</strong> <?= htmlspecialchars($latestVitals['weight'] ?? '-') ?> kg</div>
+              <div style="margin-bottom:8px"><strong>BP:</strong> <?= htmlspecialchars($latestVitals['bp_systolic'] ?? '-') ?>/<?= htmlspecialchars($latestVitals['bp_diastolic'] ?? '-') ?></div>
+              <div style="margin-bottom:8px"><strong>Sugar:</strong> <?= htmlspecialchars($latestVitals['sugar_level'] ?? '-') ?> mg/dL</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:24px">
+            <div class="card-header">Weekly Adherence</div>
+            <div class="card-body">
+              <div id="overviewAdherenceSummary" style="font-size:14px;color:var(--text-light)">Loading adherence...</div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="card" style="margin-top:24px"><div class="card-header">Health Trends</div><div class="card-body"><div style="height:250px"><canvas id="healthChart"></canvas></div></div></div>
     </div>
 
     <!-- Medicines Tab -->
@@ -297,6 +416,9 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
         <div class="card">
           <div class="card-header">My Medicine Reminders</div>
           <div class="card-body" id="medicineList">
+             <div id="adherenceSummary" style="margin-bottom:14px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;">
+                <strong>Weekly Adherence:</strong> Loading...
+             </div>
              <!-- AJAX Loaded -->
              <div class="empty-state">Loading reminders...</div>
           </div>
@@ -450,17 +572,58 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
        <div class="card">
           <div class="card-header">My Appointments</div>
           <div class="card-body">
-             <div class="empty-state">View all your upcoming and past medical consultations.</div>
+             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <select id="patientAppointmentStatusFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+                   <option value="all">All Status</option>
+                   <option value="pending">Pending</option>
+                   <option value="confirmed">Confirmed</option>
+                   <option value="completed">Completed</option>
+                   <option value="cancelled">Cancelled</option>
+                </select>
+                <select id="patientAppointmentTypeFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+                   <option value="all">All Types</option>
+                   <option value="online">Online</option>
+                   <option value="physical">Physical</option>
+                </select>
+             </div>
+             <div id="patientAppointmentsList" class="empty-state">Loading appointments...</div>
           </div>
        </div>
     </div>
 
     <!-- Reports Tab -->
     <div class="tab-pane" id="tab-reports">
-       <div class="card">
-          <div class="card-header">Medical Reports</div>
-          <div class="card-body">
-             <div class="empty-state">Upload and manage your medical test results and history.</div>
+       <div class="grid-2">
+          <div class="card">
+             <div class="card-header">Upload Report</div>
+             <div class="card-body">
+                <form id="reportUploadForm" enctype="multipart/form-data">
+                   <input type="hidden" name="action" value="upload_report">
+                   <div style="margin-bottom:14px">
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Select File</label>
+                      <input type="file" name="report" required accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <button type="submit" class="btn btn-primary" style="width:100%">Upload</button>
+                </form>
+             </div>
+          </div>
+          <div class="card">
+             <div class="card-header">My Uploaded Reports</div>
+             <div class="card-body" id="patientReportsList">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+                   <input type="text" id="reportSearchInput" placeholder="Search report name..." style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+                   <select id="reportTypeFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+                      <option value="all">All Types</option>
+                      <option value="pdf">PDF</option>
+                      <option value="doc">DOC</option>
+                      <option value="docx">DOCX</option>
+                      <option value="jpg">JPG</option>
+                      <option value="jpeg">JPEG</option>
+                      <option value="png">PNG</option>
+                   </select>
+                </div>
+                <div class="empty-state">Loading reports...</div>
+             </div>
           </div>
        </div>
     </div>
@@ -470,7 +633,53 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
        <div class="card">
           <div class="card-header">My Profile</div>
           <div class="card-body">
-             <div class="empty-state">Manage your account details and contact information.</div>
+             <form id="patientProfileForm">
+                <input type="hidden" name="action" value="update_profile">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Full Name</label>
+                      <input type="text" name="name" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Phone</label>
+                      <input type="text" name="phone" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Age</label>
+                      <input type="number" name="age" min="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Gender</label>
+                      <select name="gender" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                         <option value="">Select</option>
+                         <option value="male">Male</option>
+                         <option value="female">Female</option>
+                         <option value="other">Other</option>
+                      </select>
+                   </div>
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Blood Group</label>
+                      <input type="text" name="blood_group" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                </div>
+                <div style="margin-bottom:14px">
+                   <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Address</label>
+                   <input type="text" name="address" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">WhatsApp Number</label>
+                      <input type="text" name="whatsapp" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                   <div>
+                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Emergency Contact</label>
+                      <input type="text" name="emergency" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Profile</button>
+             </form>
           </div>
        </div>
     </div>

@@ -70,11 +70,21 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 .sidebar-user { padding: 20px 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 12px; }
 .su-avatar { width: 40px; height: 40px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
 .su-name { font-weight: 600; font-size: 14px; }
+.sidebar-nav { flex: 1; padding: 16px; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; width: 100%; border: none;
+  background: transparent; color: #94a3b8; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500; transition: 0.2s;
+}
+.nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.nav-item.active { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
 .main-content { flex: 1; margin-left: var(--sidebar-w); transition: margin var(--transition); }
 .top-bar { height: var(--header-h); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 900; }
 .page-title { font-weight: 800; font-size: 20px; color: var(--text); }
 .top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
 .page-content { padding: 32px; max-width: 1400px; margin: 0 auto; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
 .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 32px; }
 .stat-card { background: var(--card); padding: 24px; border-radius: var(--rs); border: 1px solid var(--border); display: flex; align-items: center; gap: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
@@ -82,8 +92,11 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 .card { background: var(--card); border-radius: var(--rs); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
 .card-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
 .card-body { padding: 24px; }
+.btn { padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid transparent; text-decoration: none; font-family: inherit; }
+.btn-primary { background: var(--primary); color: #fff; }
 .badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 .badge-success { background: #dcfce7; color: #166534; }
+.badge-danger { background: #fee2e2; color: #991b1b; }
 .badge-warning { background: #fef3c7; color: #92400e; }
 .sidebar-footer { padding: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
 .logout-btn {
@@ -92,6 +105,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
   font-size: 14px; font-weight: 600; transition: 0.2s; background: rgba(239,68,68,0.1);
 }
 .logout-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+.empty-state { text-align: center; padding: 30px 20px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -163,7 +177,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
     <div class="tab-pane" id="tab-appointments">
        <div class="card">
           <div class="card-header">All Appointments</div>
-          <div class="card-body" id="allAppointmentsList">
+          <div class="card-body" id="doctorAppointmentsList">
              <!-- AJAX Loaded -->
              <div class="empty-state">Loading appointments...</div>
           </div>
@@ -175,7 +189,13 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
        <div class="card">
           <div class="card-header">My Working Schedule</div>
           <div class="card-body">
-             <div class="empty-state">Set your weekly availability and consultation hours.</div>
+             <form id="doctorScheduleForm">
+                <input type="hidden" name="action" value="save_schedule">
+                <div id="doctorScheduleRows" class="empty-state">Loading schedule...</div>
+                <div style="margin-top:16px">
+                   <button type="submit" class="btn btn-primary">Save Schedule</button>
+                </div>
+             </form>
           </div>
        </div>
     </div>
@@ -184,8 +204,8 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
     <div class="tab-pane" id="tab-patients">
        <div class="card">
           <div class="card-header">My Patients</div>
-          <div class="card-body">
-             <div class="empty-state">View medical history and records of patients you've treated.</div>
+          <div class="card-body" id="doctorPatientsList">
+             <div class="empty-state">Loading patient records...</div>
           </div>
        </div>
     </div>
@@ -195,7 +215,27 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
        <div class="card">
           <div class="card-header">Doctor Profile</div>
           <div class="card-body">
-             <div class="empty-state">Manage your professional information and clinic details.</div>
+             <form id="doctorProfileForm">
+                <input type="hidden" name="action" value="update_profile">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Name</label><input type="text" name="name" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Phone</label><input type="text" name="phone" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Specialization</label><input type="text" name="specialization" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Qualification</label><input type="text" name="qualification" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Experience Years</label><input type="number" name="experience" min="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Clinic Name</label><input type="text" name="clinic_name" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Clinic Phone</label><input type="text" name="clinic_phone" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Consultation Fees</label><input type="number" step="0.01" name="fees" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                   <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Clinic Address</label><input type="text" name="clinic_address" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Profile</button>
+             </form>
           </div>
        </div>
     </div>

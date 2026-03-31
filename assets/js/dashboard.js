@@ -44,6 +44,17 @@ function showTab(name) {
   // Load specific data per tab
   if (name === 'medicines') loadMedicines();
   if (name === 'analytics') loadHealthAnalytics();
+  if (name === 'appointments') {
+    if (document.getElementById('patientAppointmentsList')) loadPatientAppointments();
+    if (document.getElementById('doctorAppointmentsList')) loadDoctorAppointments();
+  }
+  if (name === 'reports' && document.getElementById('patientReportsList')) loadPatientReports();
+  if (name === 'profile') {
+    if (document.getElementById('patientProfileForm')) loadPatientProfile();
+    if (document.getElementById('doctorProfileForm')) loadDoctorProfile();
+  }
+  if (name === 'schedule' && document.getElementById('doctorScheduleRows')) loadDoctorSchedule();
+  if (name === 'patients' && document.getElementById('doctorPatientsList')) loadDoctorPatients();
 }
 
 // ---- Sidebar Toggle ----
@@ -203,17 +214,137 @@ async function loadMedicines() {
     const data = await res.json();
     if (data.success) {
       if (data.data.length === 0) { list.innerHTML = '<div class="empty-state">No reminders set.</div>'; return; }
+      const summaryHtml = document.getElementById('adherenceSummary')?.outerHTML || '';
       list.innerHTML = data.data.map(m => `
         <div style="padding:15px;border:1px solid var(--border);border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:700">${m.medicine_name}</div>
             <div style="font-size:12px;color:var(--muted)">${m.dosage} · ${m.frequency} · Times: ${JSON.parse(m.reminder_times).join(', ')}</div>
+            <div style="font-size:12px;margin-top:4px;color:${m.today_status === 'taken' ? '#166534' : (m.today_status === 'skipped' ? '#991b1b' : 'var(--muted)')}">
+              Today: ${m.today_status ? m.today_status.toUpperCase() : 'Not marked'}
+            </div>
           </div>
-          <button class="btn" onclick="deleteMedicine(${m.id}, '${m.medicine_name.replace(/'/g, "\\'")}')" style="color:var(--danger);background:rgba(239,68,68,0.1)"><i class="fas fa-trash"></i></button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+            <button class="btn" onclick="markMedicineAdherence(${m.id}, 'taken')" style="background:#ecfdf5;color:#166534;"><i class="fas fa-check"></i> Taken</button>
+            <button class="btn" onclick="markMedicineAdherence(${m.id}, 'skipped')" style="background:#fff7ed;color:#92400e;"><i class="fas fa-forward"></i> Skipped</button>
+            <button class="btn" onclick="deleteMedicine(${m.id}, '${m.medicine_name.replace(/'/g, "\\'")}')" style="color:var(--danger);background:rgba(239,68,68,0.1)"><i class="fas fa-trash"></i></button>
+          </div>
         </div>
       `).join('');
+      if (summaryHtml) {
+        list.innerHTML = summaryHtml + list.innerHTML;
+      }
+      loadMedicineAdherenceSummary();
     }
   } catch (err) {}
+}
+
+async function loadMedicineAdherenceSummary() {
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=medicine_adherence_summary');
+    const json = await res.json();
+    if (!json.success) return;
+    const d = json.data || { taken: 0, skipped: 0, weekly_rate: 0 };
+    const html = `<strong>Weekly Adherence:</strong> ${d.weekly_rate}% · Taken: ${d.taken} · Skipped: ${d.skipped}`;
+    const el = document.getElementById('adherenceSummary');
+    const overviewEl = document.getElementById('overviewAdherenceSummary');
+    if (el) el.innerHTML = html;
+    if (overviewEl) overviewEl.innerHTML = html;
+  } catch (e) {}
+}
+
+async function markMedicineAdherence(reminderId, status) {
+  const body = new URLSearchParams({
+    action: 'mark_medicine_adherence',
+    reminder_id: String(reminderId),
+    status
+  }).toString();
+  try {
+    const res = await fetch('../api/patient_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast('Adherence saved', 'success');
+      loadMedicines();
+    } else {
+      showToast(json.message || 'Update failed', 'error');
+    }
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
+
+async function loadPatientAppointments() {
+  const container = document.getElementById('patientAppointmentsList');
+  if (!container) return;
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=patient_appointments');
+    const json = await res.json();
+    if (!json.success || !json.data || json.data.length === 0) {
+      container.innerHTML = '<div class="empty-state">No appointments found.</div>';
+      return;
+    }
+    const statusFilter = document.getElementById('patientAppointmentStatusFilter')?.value || 'all';
+    const typeFilter = document.getElementById('patientAppointmentTypeFilter')?.value || 'all';
+    const filtered = json.data.filter((a) => (statusFilter === 'all' || a.status === statusFilter) && (typeFilter === 'all' || a.type === typeFilter));
+    if (!filtered.length) {
+      container.innerHTML = '<div class="empty-state">No appointments match selected filters.</div>';
+      return;
+    }
+    container.innerHTML = filtered.map(a => `
+      <div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+          <div>
+            <div style="font-weight:700;">Dr. ${a.doctor_name}</div>
+            <div style="font-size:12px;color:var(--muted);">${a.specialization || ''} · ${a.clinic_name || 'Clinic'}</div>
+          </div>
+          <span class="badge ${(a.status === 'confirmed' || a.status === 'completed') ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
+        </div>
+        <div style="margin-top:10px;font-size:13px;color:var(--text-light);">
+          <i class="fas fa-calendar"></i> ${a.appointment_date} ${a.appointment_time} · ${a.type}
+        </div>
+        ${a.meet_link ? `<div style="margin-top:8px;font-size:13px;"><a href="${a.meet_link}" target="_blank" rel="noopener">Join Meet Link</a></div>` : ''}
+        ${a.doctor_notes ? `<div style="margin-top:8px;font-size:13px;"><strong>Doctor Notes:</strong> ${a.doctor_notes}</div>` : ''}
+        ${a.prescription ? `<div style="margin-top:6px;font-size:13px;"><strong>Prescription:</strong> ${a.prescription}</div>` : ''}
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="cancelPatientAppointment(${a.id})">Cancel</button>` : ''}
+          <button class="btn" style="background:#f8fafc;color:#1f2937;" onclick="toggleAppointmentDetails(${a.id})">Details</button>
+        </div>
+        <div id="patient-appointment-details-${a.id}" style="display:none;margin-top:10px;padding:10px;border:1px dashed var(--border);border-radius:8px;background:#f8fafc;">
+          <div style="font-size:13px;"><strong>Clinic:</strong> ${a.clinic_name || '-'}</div>
+          <div style="font-size:13px;"><strong>Type:</strong> ${a.type}</div>
+          <div style="font-size:13px;"><strong>Status:</strong> ${a.status}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state">Could not load appointments.</div>';
+  }
+}
+
+function toggleAppointmentDetails(id) {
+  const el = document.getElementById(`patient-appointment-details-${id}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function cancelPatientAppointment(id) {
+  if (!confirm('Cancel this appointment?')) return;
+  const res = await fetch('../api/patient_api.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `action=cancel_appointment&id=${id}`
+  });
+  const json = await res.json();
+  if (json.success) {
+    showToast('Appointment cancelled', 'success');
+    loadPatientAppointments();
+  } else {
+    showToast(json.message || 'Failed to cancel', 'error');
+  }
 }
 
 async function deleteMedicine(id, name) {
@@ -414,6 +545,200 @@ async function loadUserList() {
    } catch(e) {}
 }
 
+async function loadPatientReports() {
+  const container = document.getElementById('patientReportsList');
+  if (!container) return;
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=patient_reports');
+    const json = await res.json();
+    if (!json.success || !json.data || json.data.length === 0) {
+      container.innerHTML = '<div class="empty-state">No reports uploaded yet.</div>';
+      return;
+    }
+    const q = (document.getElementById('reportSearchInput')?.value || '').trim().toLowerCase();
+    const type = document.getElementById('reportTypeFilter')?.value || 'all';
+    const rows = json.data.filter((r) => {
+      const name = (r.file_name || '').toLowerCase();
+      const ft = (r.file_type || '').toLowerCase();
+      const matchesQ = !q || name.includes(q);
+      const matchesType = type === 'all' || ft === type;
+      return matchesQ && matchesType;
+    });
+    if (!rows.length) {
+      container.innerHTML = '<div class="empty-state">No reports match your search/filter.</div>';
+      return;
+    }
+    container.innerHTML = rows.map(r => `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-weight:700;">${r.file_name}</div>
+          <div style="font-size:12px;color:var(--muted);">${r.file_type || '-'} · ${r.uploaded_at}</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <a class="btn" href="../uploads/${r.file_path}" target="_blank" rel="noopener" style="background:#eff6ff;color:#1e40af;">View</a>
+          <button class="btn" style="background:#f8fafc;color:#1f2937;" onclick="previewPatientReport('${r.file_type || ''}', '../uploads/${r.file_path}')">Preview</button>
+          <button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="deletePatientReport(${r.id})">Delete</button>
+        </div>
+      </div>
+    `).join('');
+    container.innerHTML += '<div id="reportPreviewBox" style="margin-top:12px;"></div>';
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state">Could not load reports.</div>';
+  }
+}
+
+function previewPatientReport(fileType, url) {
+  const box = document.getElementById('reportPreviewBox');
+  if (!box) return;
+  const ft = (fileType || '').toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ft)) {
+    box.innerHTML = `<div style="margin-top:8px;"><img src="${url}" alt="Report preview" style="max-width:100%;border:1px solid var(--border);border-radius:8px;"></div>`;
+    return;
+  }
+  if (ft === 'pdf') {
+    box.innerHTML = `<iframe src="${url}" title="PDF Preview" style="width:100%;height:420px;border:1px solid var(--border);border-radius:8px;"></iframe>`;
+    return;
+  }
+  box.innerHTML = `<div style="padding:10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;">Preview is not supported for this file type. Use View to open it.</div>`;
+}
+
+async function deletePatientReport(id) {
+  if (!confirm('Delete this report?')) return;
+  const res = await fetch('../api/patient_api.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `action=delete_report&id=${id}`
+  });
+  const json = await res.json();
+  if (json.success) {
+    showToast('Report deleted', 'success');
+    loadPatientReports();
+  } else {
+    showToast(json.message || 'Delete failed', 'error');
+  }
+}
+
+async function loadPatientProfile() {
+  const form = document.getElementById('patientProfileForm');
+  if (!form) return;
+  const res = await fetch('../api/dashboard_data.php?type=patient_profile');
+  const json = await res.json();
+  if (!json.success || !json.data) return;
+  Object.entries({
+    name: json.data.name || '',
+    phone: json.data.phone || '',
+    age: json.data.age || '',
+    gender: json.data.gender || '',
+    blood_group: json.data.blood_group || '',
+    address: json.data.address || '',
+    whatsapp: json.data.whatsapp_number || '',
+    emergency: json.data.emergency_contact || ''
+  }).forEach(([k, v]) => {
+    const el = form.querySelector(`[name="${k}"]`);
+    if (el) el.value = v;
+  });
+}
+
+async function loadDoctorAppointments() {
+  const container = document.getElementById('doctorAppointmentsList');
+  if (!container) return;
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=doctor_appointments');
+    const json = await res.json();
+    if (!json.success || !json.data || json.data.length === 0) {
+      container.innerHTML = '<div class="empty-state">No appointments found.</div>';
+      return;
+    }
+    container.innerHTML = json.data.map(a => `
+      <div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-weight:700;">${a.patient_name}</div>
+            <div style="font-size:12px;color:var(--muted);">${a.patient_phone || 'No phone'} · ${a.type}</div>
+          </div>
+          <span class="badge ${(a.status === 'confirmed' || a.status === 'completed') ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-light);">
+          <i class="fas fa-calendar"></i> ${a.appointment_date} ${a.appointment_time}
+        </div>
+        ${a.meet_link ? `<div style="margin-top:6px;font-size:13px;"><strong>Meet:</strong> <a href="${a.meet_link}" target="_blank" rel="noopener">${a.meet_link}</a></div>` : ''}
+        ${a.patient_notes ? `<div style="margin-top:6px;font-size:13px;color:var(--muted);"><strong>Patient notes:</strong> ${a.patient_notes}</div>` : ''}
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">
+          ${a.status === 'pending' ? `<button class="btn btn-primary" onclick="doctorUpdateAppointmentStatus(${a.id}, 'confirm_appointment')"><i class="fas fa-check"></i> Confirm</button>` : ''}
+          ${a.status === 'confirmed' ? `<button class="btn" style="background:#ecfdf5;color:#166534;" onclick="doctorUpdateAppointmentStatus(${a.id}, 'complete_appointment')"><i class="fas fa-flag-checkered"></i> Complete</button>` : ''}
+          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.08);color:var(--danger);" onclick="doctorUpdateAppointmentStatus(${a.id}, 'cancel_appointment')"><i class="fas fa-times"></i> Cancel</button>` : ''}
+          <button class="btn" style="background:#dbeafe;color:#1e40af;" onclick="manageMeetLink(${a.id}, ${a.meet_link ? `'${encodeURIComponent(a.meet_link)}'` : 'null'})"><i class="fas fa-video"></i> Meet link</button>
+          <button class="btn" style="background:#f9fafb;color:#111827;" onclick="manageAppointment(${a.id})"><i class="fas fa-notes-medical"></i> Notes</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="empty-state">Could not load appointments.</div>';
+  }
+}
+
+async function loadDoctorSchedule() {
+  const wrapper = document.getElementById('doctorScheduleRows');
+  if (!wrapper) return;
+  const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  const res = await fetch('../api/dashboard_data.php?type=doctor_schedule');
+  const json = await res.json();
+  const map = {};
+  (json.data || []).forEach(r => { map[r.day_of_week] = r; });
+  wrapper.className = '';
+  wrapper.innerHTML = days.map(day => {
+    const row = map[day] || { is_available: 0, start_time: '09:00:00', end_time: '17:00:00', slot_duration: 30 };
+    return `
+      <div style="display:grid;grid-template-columns:130px 100px 1fr 1fr 1fr;gap:10px;align-items:center;margin-bottom:10px;">
+        <strong style="text-transform:capitalize;">${day}</strong>
+        <label><input type="checkbox" name="${day}_available" ${parseInt(row.is_available, 10) ? 'checked' : ''}> Open</label>
+        <input type="time" name="${day}_start" value="${(row.start_time || '09:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;">
+        <input type="time" name="${day}_end" value="${(row.end_time || '17:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;">
+        <input type="number" min="5" name="${day}_slot" value="${row.slot_duration || 30}" style="padding:8px;border:1px solid var(--border);border-radius:8px;">
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadDoctorPatients() {
+  const container = document.getElementById('doctorPatientsList');
+  if (!container) return;
+  const res = await fetch('../api/dashboard_data.php?type=doctor_patients');
+  const json = await res.json();
+  if (!json.success || !json.data || json.data.length === 0) {
+    container.innerHTML = '<div class="empty-state">No patients found yet.</div>';
+    return;
+  }
+  container.innerHTML = json.data.map(p => `
+    <div style="padding:12px 0;border-bottom:1px solid var(--border);">
+      <div style="font-weight:700;">${p.name}</div>
+      <div style="font-size:12px;color:var(--muted);">${p.email} · ${p.phone || '-'} · Last visit: ${p.last_appointment || '-'}</div>
+    </div>
+  `).join('');
+}
+
+async function loadDoctorProfile() {
+  const form = document.getElementById('doctorProfileForm');
+  if (!form) return;
+  const res = await fetch('../api/dashboard_data.php?type=doctor_profile');
+  const json = await res.json();
+  if (!json.success || !json.data) return;
+  Object.entries({
+    name: json.data.name || '',
+    phone: json.data.phone || '',
+    specialization: json.data.specialization || '',
+    qualification: json.data.qualification || '',
+    experience: json.data.experience_years || '',
+    clinic_name: json.data.clinic_name || '',
+    clinic_phone: json.data.clinic_phone || '',
+    fees: json.data.fees || '',
+    clinic_address: json.data.clinic_address || ''
+  }).forEach(([k, v]) => {
+    const el = form.querySelector(`[name="${k}"]`);
+    if (el) el.value = v;
+  });
+}
+
 function downloadUserList() {
    const role = document.getElementById('userFilterRole')?.value || 'all';
    window.open(`../api/export_pdf.php?role=${role}`, '_blank');
@@ -562,8 +887,106 @@ async function loadHealthAnalytics() {
 document.addEventListener('DOMContentLoaded', () => {
    if (document.getElementById('medicineList')) loadMedicines();
    if (document.getElementById('userManagementTable')) loadUserList();
+   if (document.getElementById('patientAppointmentsList')) loadPatientAppointments();
+   if (document.getElementById('patientReportsList')) loadPatientReports();
+   if (document.getElementById('patientProfileForm')) loadPatientProfile();
+   if (document.getElementById('doctorAppointmentsList')) loadDoctorAppointments();
+   if (document.getElementById('doctorScheduleRows')) loadDoctorSchedule();
+   if (document.getElementById('doctorPatientsList')) loadDoctorPatients();
+   if (document.getElementById('doctorProfileForm')) loadDoctorProfile();
    initMedicineSuggestions();
+   loadMedicineAdherenceSummary();
 });
+
+const reportUploadForm = document.getElementById('reportUploadForm');
+if (reportUploadForm) {
+  reportUploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(reportUploadForm);
+    const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (json.success) {
+      showToast(json.message || 'Uploaded', 'success');
+      reportUploadForm.reset();
+      loadPatientReports();
+    } else {
+      showToast(json.message || 'Upload failed', 'error');
+    }
+  });
+}
+
+document.getElementById('patientAppointmentStatusFilter')?.addEventListener('change', loadPatientAppointments);
+document.getElementById('patientAppointmentTypeFilter')?.addEventListener('change', loadPatientAppointments);
+document.getElementById('reportSearchInput')?.addEventListener('input', loadPatientReports);
+document.getElementById('reportTypeFilter')?.addEventListener('change', loadPatientReports);
+
+const patientProfileForm = document.getElementById('patientProfileForm');
+if (patientProfileForm) {
+  patientProfileForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(patientProfileForm);
+    const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
+    const json = await res.json();
+    showToast(json.message || (json.success ? 'Saved' : 'Failed'), json.success ? 'success' : 'error');
+  });
+}
+
+const doctorProfileForm = document.getElementById('doctorProfileForm');
+if (doctorProfileForm) {
+  doctorProfileForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(doctorProfileForm);
+    const res = await fetch('../api/doctor_api.php', { method: 'POST', body: fd });
+    const json = await res.json();
+    showToast(json.message || (json.success ? 'Saved' : 'Failed'), json.success ? 'success' : 'error');
+  });
+}
+
+const doctorScheduleForm = document.getElementById('doctorScheduleForm');
+if (doctorScheduleForm) {
+  doctorScheduleForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    const schedule = days.map((day) => ({
+      day,
+      available: doctorScheduleForm.querySelector(`[name="${day}_available"]`)?.checked ? 1 : 0,
+      start: doctorScheduleForm.querySelector(`[name="${day}_start"]`)?.value || '09:00',
+      end: doctorScheduleForm.querySelector(`[name="${day}_end"]`)?.value || '17:00',
+      slot: parseInt(doctorScheduleForm.querySelector(`[name="${day}_slot"]`)?.value || '30', 10)
+    }));
+    const body = new URLSearchParams({ action: 'save_schedule', schedule: JSON.stringify(schedule) }).toString();
+    const res = await fetch('../api/doctor_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    const json = await res.json();
+    showToast(json.message || (json.success ? 'Schedule saved' : 'Save failed'), json.success ? 'success' : 'error');
+  });
+}
+
+async function doctorUpdateAppointmentStatus(id, action) {
+  if (!['confirm_appointment','cancel_appointment','complete_appointment'].includes(action)) return;
+  // Simple confirmation for destructive actions
+  if (action === 'cancel_appointment' && !confirm('Cancel this appointment?')) return;
+  const body = new URLSearchParams({ action, id }).toString();
+  try {
+    const res = await fetch('../api/doctor_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast('Appointment updated', 'success');
+      loadDoctorAppointments();
+    } else {
+      showToast(json.message || 'Update failed', 'error');
+    }
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
 
 // ---- Medicine Suggestion Logic ----
 const commonMedicines = [

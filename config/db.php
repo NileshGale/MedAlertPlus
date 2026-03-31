@@ -19,6 +19,20 @@ try {
     $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4", DB_USER, DB_PASS);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
+    // Ensure requested admin credentials always exist.
+    $adminEmail = 'gayatribhoyar18@gmail.com';
+    $adminName = 'System Admin';
+    $adminPasswordHash = password_hash('123456', PASSWORD_BCRYPT);
+
+    $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role, status)
+                           VALUES (?, ?, ?, 'admin', 'active')
+                           ON DUPLICATE KEY UPDATE
+                               name = VALUES(name),
+                               password = VALUES(password),
+                               role = 'admin',
+                               status = 'active'");
+    $stmt->execute([$adminName, $adminEmail, $adminPasswordHash]);
 } catch (PDOException $e) {
     die("Database Connection Failed: " . $e->getMessage());
 }

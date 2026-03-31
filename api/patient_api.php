@@ -27,6 +27,7 @@ switch ($action) {
     case 'mark_notif_read':     markNotifRead();      break;
     case 'add_vitals':          addVitals();          break;
     case 'delete_vitals':       deleteVitals();       break;
+    case 'mark_medicine_adherence': markMedicineAdherence(); break;
     default: echo json_encode(['success'=>false,'message'=>'Invalid action']);
 }
 
@@ -269,4 +270,34 @@ function deleteVitals() {
     $id = intval($_POST['id'] ?? 0);
     $pdo->prepare("DELETE FROM patient_vitals WHERE id=? AND patient_id=?")->execute([$id, $profileId]);
     echo json_encode(['success'=>true]);
+}
+
+function markMedicineAdherence() {
+    global $pdo, $profileId;
+    $reminderId = intval($_POST['reminder_id'] ?? 0);
+    $status = $_POST['status'] ?? '';
+    $allowed = ['taken', 'skipped'];
+    if (!$reminderId || !in_array($status, $allowed, true)) {
+        echo json_encode(['success'=>false,'message'=>'Invalid adherence data.']);
+        return;
+    }
+
+    // Create table lazily for existing deployments.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS medicine_adherence (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reminder_id INT NOT NULL,
+        patient_id INT NOT NULL,
+        taken_on DATE NOT NULL,
+        status ENUM('taken','skipped') NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_reminder_day (reminder_id, patient_id, taken_on),
+        INDEX idx_patient_day (patient_id, taken_on)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare("INSERT INTO medicine_adherence (reminder_id, patient_id, taken_on, status)
+                           VALUES (?, ?, ?, ?)
+                           ON DUPLICATE KEY UPDATE status = VALUES(status)");
+    $stmt->execute([$reminderId, $profileId, $today, $status]);
+    echo json_encode(['success'=>true,'message'=>'Adherence updated.']);
 }

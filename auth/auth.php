@@ -178,23 +178,16 @@ function handleVerifyOTP($pdo) {
                 $pdo->commit();
 
                 if ($reg['role'] === 'patient') {
-                    // Auto login for patient
-                    $_SESSION['user_id'] = $userId;
-                    $_SESSION['user_role'] = 'patient';
-                    $_SESSION['user_name'] = $reg['name'];
-                    $_SESSION['user_email'] = $reg['email'];
-                    $_SESSION['profile_id'] = $profileId;
-
                     echo json_encode([
-                        'status' => 'success', 
-                        'message' => 'Account verified! Welcome to Med-Alert-Plus.', 
-                        'redirect' => 'dashboard/patient.php'
+                        'status' => 'success',
+                        'message' => 'Account verified successfully! Please login to continue.',
+                        'redirect' => 'login.html'
                     ]);
                 } else {
                     echo json_encode([
-                        'status' => 'success', 
-                        'message' => 'Verification successful! Please wait for Admin to approve your account before logging in.', 
-                        'redirect' => 'index.html'
+                        'status' => 'success',
+                        'message' => 'Verification successful! Please wait for Admin approval, then login.',
+                        'redirect' => 'login.html'
                     ]);
                 }
             } catch (Exception $e) {
@@ -212,6 +205,6 @@ function handleVerifyOTP($pdo) {
 function handleLogout() {
     session_unset();
     session_destroy();
-    header("Location: ../index.html");
+    header("Location: ../login.html");
     exit;
 }

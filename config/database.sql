@@ -208,8 +208,8 @@ CREATE TABLE IF NOT EXISTS `otp_verifications` (
 -- Default Administrator Account
 -- --------------------------------------------------------
 INSERT IGNORE INTO `users` (`name`, `email`, `password`, `role`, `status`) 
-VALUES ('System Admin', 'admin@medalert.com', '$2y$12$D67r6A8R0vSjJ3W8.F2Gq.X1YV7p1Z1W2U3T4R5E6G7H8I9J0K1L2', 'admin', 'active');
--- Password: admin1234
+VALUES ('System Admin', 'gayatribhoyar18@gmail.com', '$2y$10$replace.with.runtime.hash', 'admin', 'active');
+-- Password is enforced at runtime from config/db.php as: 123456
 
 COMMIT;
 -- Emergency SOS Alerts
