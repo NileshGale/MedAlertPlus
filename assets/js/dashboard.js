@@ -506,11 +506,13 @@ function buildClinicSearchParams(extra) {
   const state = document.getElementById('clinicState')?.value?.trim() || '';
   const postal = document.getElementById('clinicPostal')?.value?.trim() || '';
   const country = document.getElementById('clinicCountry')?.value?.trim() || 'India';
+  const maxKm = document.getElementById('clinicDistanceKm')?.value || '10';
   if (line) p.set('address_line', line);
   if (city) p.set('city', city);
   if (state) p.set('state', state);
   if (postal) p.set('postal_code', postal);
   if (country) p.set('country', country);
+  p.set('max_km', maxKm);
   return p;
 }
 
@@ -663,6 +665,9 @@ async function searchClinics(geo) {
       const doc = escClinic(c.doctor_name || '—');
       const fee = escClinic(c.fees || '—');
       const contact = escClinic(c.contact || '—');
+      const usingApprox = !c.distance_text && (c.distance_km !== null && c.distance_km !== undefined);
+      const distance = c.distance_text || (usingApprox ? Number(c.distance_km).toFixed(2) + ' km away' : '');
+      const duration = c.duration_text ? ` (${c.duration_text})` : '';
       const mapsUrl = c.maps_url || ('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((c.clinic_name || '') + ' ' + (c.clinic_address || '')));
       const webSafe = typeof c.website === 'string' && /^https?:\/\//i.test(c.website) ? c.website.replace(/"/g, '') : '';
       const web = webSafe ? `<a href="${webSafe}" target="_blank" rel="noopener" style="font-size:13px;color:var(--primary-light)">Website</a>` : '';
@@ -679,6 +684,7 @@ async function searchClinics(geo) {
             <div style="font-weight:800;font-size:17px">${name}</div>${src}
           </div>
           <div style="color:var(--text-light);font-size:13px;line-height:1.5"><i class="fas fa-map-marker-alt"></i> ${addr}</div>
+          ${distance ? `<div style="font-size:12px;color:#2563eb;"><i class="fas fa-route"></i> ${distance}${duration}${usingApprox ? ' · approx' : ''}</div>` : ''}
           <div style="font-size:13px"><strong>Doctor:</strong> ${doc}</div>
           <div style="font-size:13px"><strong>Consultation / fees:</strong> ${fee}</div>
           <div style="font-size:13px"><strong>Contact:</strong> ${contact !== '—' ? `<a href="tel:${String(c.contact).replace(/\s/g, '')}">${contact}</a>` : contact}</div>

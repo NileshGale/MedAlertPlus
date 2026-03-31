@@ -592,6 +592,14 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
              <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;align-items:center">
                 <button type="button" class="btn btn-primary" onclick="searchClinics()"><i class="fas fa-search"></i> Search nearby</button>
                 <button type="button" class="btn" style="background:var(--bg);border:1px solid var(--border)" onclick="useMyLocationForClinics()"><i class="fas fa-location-dot"></i> Use my location</button>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">
+                   Distance
+                   <select id="clinicDistanceKm" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;">
+                      <option value="3">3 km</option>
+                      <option value="5">5 km</option>
+                      <option value="10" selected>10 km</option>
+                   </select>
+                </label>
                 <span id="clinicGeoStatus" style="font-size:12px;color:var(--muted)"></span>
              </div>
              <div id="clinicResults" class="grid-2" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));">

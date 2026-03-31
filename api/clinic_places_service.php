@@ -1,7 +1,11 @@
 <?php
 
-function clinicMapsUrl(?float $lat, ?float $lng, string $address = '', string $name = ''): string
+function clinicMapsUrl(?float $lat, ?float $lng, string $address = '', string $name = '', ?float $originLat = null, ?float $originLng = null): string
 {
+    if ($originLat !== null && $originLng !== null && $lat !== null && $lng !== null) {
+        return 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode($originLat . ',' . $originLng)
+            . '&destination=' . rawurlencode($lat . ',' . $lng);
+    }
     if ($lat !== null && $lng !== null && abs($lat) > 0.0001 && abs($lng) > 0.0001) {
         return 'https://www.google.com/maps/dir/?api=1&destination=' . rawurlencode($lat . ',' . $lng);
     }
@@ -10,6 +14,17 @@ function clinicMapsUrl(?float $lat, ?float $lng, string $address = '', string $n
         return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($q);
     }
     return 'https://www.google.com/maps/';
+}
+
+function clinicDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+{
+    $earth = 6371.0;
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLng = deg2rad($lng2 - $lng1);
+    $a = sin($dLat / 2) * sin($dLat / 2)
+        + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) * sin($dLng / 2);
+    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+    return $earth * $c;
 }
 
 function clinicHttpJson(string $url, int $timeoutSec = 16): ?array
@@ -82,6 +97,36 @@ function clinicGoogleTextSearchQuery(string $queryText, string $key): array
         return [];
     }
     return $data['results'] ?? [];
+}
+
+function clinicGoogleDistanceMatrix(float $originLat, float $originLng, array $destinations, string $key): array
+{
+    if (empty($destinations) || strpos($key, 'replace-me') !== false) {
+        return [];
+    }
+    $destParam = implode('|', array_map(function ($d) {
+        return $d['lat'] . ',' . $d['lng'];
+    }, $destinations));
+    $url = 'https://maps.googleapis.com/maps/api/distancematrix/json?origins='
+        . rawurlencode($originLat . ',' . $originLng)
+        . '&destinations=' . rawurlencode($destParam)
+        . '&mode=driving&units=metric&key=' . rawurlencode($key);
+    $json = clinicHttpJson($url, 20);
+    if (!$json || ($json['status'] ?? '') !== 'OK' || empty($json['rows'][0]['elements'])) {
+        return [];
+    }
+    $out = [];
+    foreach ($json['rows'][0]['elements'] as $idx => $el) {
+        if (($el['status'] ?? '') !== 'OK') {
+            continue;
+        }
+        $out[$idx] = [
+            'distance_km' => isset($el['distance']['value']) ? round(((float) $el['distance']['value']) / 1000, 2) : null,
+            'distance_text' => $el['distance']['text'] ?? null,
+            'duration_text' => $el['duration']['text'] ?? null,
+        ];
+    }
+    return $out;
 }
 
 function clinicNominatimSearch(string $query, int $limit = 8): array
@@ -285,7 +330,7 @@ function mergeClinicSearchResults(PDO $pdo, array $get): array
             'contact' => $phone !== '' ? $phone : '—',
             'lat' => null,
             'lng' => null,
-            'maps_url' => clinicMapsUrl(null, null, (string) $row['clinic_address'], (string) $row['clinic_name']),
+            'maps_url' => clinicMapsUrl(null, null, (string) $row['clinic_address'], (string) $row['clinic_name'], $lat, $lng),
             'website' => '',
         ];
     }
@@ -325,7 +370,7 @@ function mergeClinicSearchResults(PDO $pdo, array $get): array
                 'contact' => $det['phone'] !== '' ? $det['phone'] : '—',
                 'lat' => $plat,
                 'lng' => $plng,
-                'maps_url' => clinicMapsUrl($plat, $plng, $addr, $name),
+                'maps_url' => clinicMapsUrl($plat, $plng, $addr, $name, $lat, $lng),
                 'website' => $det['website'] ?? '',
             ];
         }
@@ -336,9 +381,63 @@ function mergeClinicSearchResults(PDO $pdo, array $get): array
         foreach ($osmEls as $el) {
             $row = clinicFromOsmElement($el);
             if ($row) {
+                $row['maps_url'] = clinicMapsUrl(
+                    isset($row['lat']) ? (float) $row['lat'] : null,
+                    isset($row['lng']) ? (float) $row['lng'] : null,
+                    (string) ($row['clinic_address'] ?? ''),
+                    (string) ($row['clinic_name'] ?? ''),
+                    $lat,
+                    $lng
+                );
                 $ext[] = $row;
             }
         }
+    }
+
+    // Keep only actually nearby clinics when we know search center location.
+    if ($lat !== null && $lng !== null) {
+        $maxDistanceKm = isset($get['max_km']) ? max(1.0, min(30.0, (float) $get['max_km'])) : 8.0;
+        foreach ($ext as &$r) {
+            if (isset($r['lat'], $r['lng']) && is_numeric($r['lat']) && is_numeric($r['lng'])) {
+                $r['distance_km'] = round(clinicDistanceKm($lat, $lng, (float) $r['lat'], (float) $r['lng']), 2);
+            } else {
+                $r['distance_km'] = null;
+            }
+        }
+        unset($r);
+
+        // Prefer Google Maps driving distance/time where available.
+        if ($keyOk) {
+            $distanceTargets = [];
+            $indexMap = [];
+            foreach ($ext as $idx => $r) {
+                if (isset($r['lat'], $r['lng']) && is_numeric($r['lat']) && is_numeric($r['lng'])) {
+                    $indexMap[] = $idx;
+                    $distanceTargets[] = ['lat' => (float) $r['lat'], 'lng' => (float) $r['lng']];
+                }
+                if (count($distanceTargets) >= 10) {
+                    break;
+                }
+            }
+            $matrix = clinicGoogleDistanceMatrix($lat, $lng, $distanceTargets, $key);
+            foreach ($matrix as $mIdx => $distRow) {
+                if (!isset($indexMap[$mIdx])) {
+                    continue;
+                }
+                $targetIdx = $indexMap[$mIdx];
+                $ext[$targetIdx]['distance_km'] = $distRow['distance_km'];
+                $ext[$targetIdx]['distance_text'] = $distRow['distance_text'];
+                $ext[$targetIdx]['duration_text'] = $distRow['duration_text'];
+            }
+        }
+
+        $ext = array_values(array_filter($ext, function ($r) use ($maxDistanceKm) {
+            return isset($r['distance_km']) && is_numeric($r['distance_km']) && (float) $r['distance_km'] <= $maxDistanceKm;
+        }));
+
+        usort($ext, function ($a, $b) {
+            return ($a['distance_km'] ?? 9999) <=> ($b['distance_km'] ?? 9999);
+        });
     }
 
     return array_merge($merged, array_slice($ext, 0, 20));
