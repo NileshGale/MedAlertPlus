@@ -1043,9 +1043,42 @@ function showHomeRemedies() {
 }
 
 function openBookingModal(id, name) {
-   document.getElementById('bookDocId').value = id;
-   document.getElementById('bookDocName').value = 'Dr. ' + name;
-   document.getElementById('bookingModal').style.display = 'flex';
+   openPatientBookingModal(id, name);
+}
+
+async function loadAvailableDoctors(selectedDoctorId = null) {
+  const sel = document.getElementById('bookDocId');
+  const countEl = document.getElementById('availableDoctorsCount');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Loading doctors...</option>';
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=available_doctors');
+    const json = await res.json();
+    const doctors = (json.success && Array.isArray(json.data)) ? json.data : [];
+    if (doctors.length === 0) {
+      sel.innerHTML = '<option value="">No registered doctors available</option>';
+      if (countEl) countEl.textContent = 'Available doctors: 0';
+      return;
+    }
+    sel.innerHTML = '<option value="">Select doctor</option>' + doctors.map((d) => {
+      const openTag = (d.clinic_status === 'open') ? 'Open' : 'Closed';
+      return `<option value="${d.id}">Dr. ${d.doctor_name} - ${d.specialization || 'General'} (${d.clinic_name || 'Clinic'}) [${openTag}]</option>`;
+    }).join('');
+    if (selectedDoctorId) {
+      sel.value = String(selectedDoctorId);
+    }
+    if (countEl) countEl.textContent = `Available doctors: ${doctors.length}`;
+  } catch (e) {
+    sel.innerHTML = '<option value="">Failed to load doctors</option>';
+    if (countEl) countEl.textContent = 'Available doctors: 0';
+  }
+}
+
+function openPatientBookingModal(selectedDoctorId = null, _name = null) {
+  const modal = document.getElementById('bookingModal');
+  if (!modal) return;
+  loadAvailableDoctors(selectedDoctorId);
+  modal.style.display = 'flex';
 }
 
 function closeModal(id) {

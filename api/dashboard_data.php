@@ -130,6 +130,18 @@ try {
             echo json_encode($response);
             exit;
 
+        case 'available_doctors':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT d.id, u.name AS doctor_name, d.specialization, d.clinic_name, d.clinic_status
+                                   FROM doctors d
+                                   JOIN users u ON d.user_id = u.id
+                                   WHERE d.approval_status = 'approved' AND u.status = 'active'
+                                   ORDER BY (d.clinic_status='open') DESC, u.name ASC");
+            $stmt->execute();
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
         case 'patient_reports':
             if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
             $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, uploaded_at

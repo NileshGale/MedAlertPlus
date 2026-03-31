@@ -442,6 +442,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
           <div class="card-header">My Appointments</div>
           <div class="card-body">
              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <button class="btn btn-primary" type="button" onclick="openPatientBookingModal()"><i class="fas fa-calendar-plus"></i> Book Appointment</button>
                 <select id="patientAppointmentStatusFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
                    <option value="all">All Status</option>
                    <option value="pending">Pending</option>
@@ -608,10 +609,12 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
         <div class="card-body">
            <form id="appointmentForm">
               <input type="hidden" name="action" value="book_appointment">
-              <input type="hidden" name="doctor_id" id="bookDocId">
               <div style="margin-bottom:15px">
-                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Doctor</label>
-                 <input type="text" id="bookDocName" disabled style="width:100%;padding:10px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">
+                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Registered Doctor</label>
+                 <select name="doctor_id" id="bookDocId" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                    <option value="">Loading doctors...</option>
+                 </select>
+                 <div id="availableDoctorsCount" style="font-size:12px;color:var(--muted);margin-top:6px;">Available doctors: 0</div>
               </div>
               <div style="margin-bottom:15px">
                  <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Appointment Type</label>
@@ -631,8 +634,8 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                  </div>
               </div>
               <div style="margin-bottom:20px">
-                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Notes (Symptoms/Reason)</label>
-                 <textarea name="notes" placeholder="Optional notes for the doctor..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;height:80px;"></textarea>
+                 <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Reason for Booking</label>
+                 <textarea name="notes" required placeholder="Describe symptoms/reason for appointment..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;height:80px;"></textarea>
               </div>
               <button type="submit" class="btn btn-primary" style="width:100%">Confirm Booking</button>
            </form>
