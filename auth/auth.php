@@ -74,7 +74,7 @@ function handleLogin($pdo) {
             $_SESSION['profile_id'] = 0; // Admin
         }
 
-        $redirect = ($user['role'] === 'admin') ? 'dashboard/admin.php' : 'dashboard/' . $user['role'] . '.php';
+        $redirect = ($user['role'] === 'admin') ? 'dashboard/admin.html' : 'dashboard/' . $user['role'] . '.html';
         
         echo json_encode([
             'status' => 'success', 

@@ -1,88 +1,3 @@
-<?php
-session_start();
-require_once '../config/db.php';
-
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'patient') {
-    header("Location: ../index.html");
-    exit;
-}
-
-$userId = $_SESSION['user_id'];
-$profileId = $_SESSION['profile_id'];
-$userName = $_SESSION['user_name'];
-
-// 1. Fetch Stats
-$totalAppt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ?");
-$totalAppt->execute([$profileId]);
-$totalAppt = $totalAppt->fetchColumn();
-
-$totalMeds = $pdo->prepare("SELECT COUNT(*) FROM medicine_reminders WHERE patient_id = ? AND is_active = 1");
-$totalMeds->execute([$profileId]);
-$totalMeds = $totalMeds->fetchColumn();
-
-$pendingAppt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ? AND status='pending'");
-$pendingAppt->execute([$profileId]);
-$pendingAppt = $pendingAppt->fetchColumn();
-
-$sympChecks = $pdo->prepare("SELECT COUNT(*) FROM symptom_checks WHERE patient_id = ?");
-$sympChecks->execute([$profileId]);
-$sympChecks = $sympChecks->fetchColumn();
-
-// 2. Upcoming Appointments
-$stmt = $pdo->prepare("SELECT a.*, u.name as doctor_name, d.specialization 
-                       FROM appointments a 
-                       JOIN doctors d ON a.doctor_id = d.id 
-                       JOIN users u ON d.user_id = u.id 
-                       WHERE a.patient_id = ? AND a.appointment_date >= CURDATE() 
-                       ORDER BY a.appointment_date ASC, a.appointment_time ASC LIMIT 5");
-$stmt->execute([$profileId]);
-$upcoming = $stmt->fetchAll();
-
-// 3. Medicines
-$stmt = $pdo->prepare("SELECT * FROM medicine_reminders WHERE patient_id = ? AND is_active = 1 LIMIT 5");
-$stmt->execute([$profileId]);
-$medicines = $stmt->fetchAll();
-
-// 4. Notifications
-$stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 15");
-$stmt->execute([$userId]);
-$notifications = $stmt->fetchAll();
-$unreadCount = count(array_filter($notifications, function($n) { return !$n['is_read']; }));
-
-// 5. Patient Data (for pre-filling WhatsApp)
-$patData = $pdo->prepare("SELECT whatsapp_number FROM patients WHERE id = ?");
-$patData->execute([$profileId]);
-$patContact = $patData->fetch();
-$whatsappNumber = $patContact['whatsapp_number'] ?? '';
-
-// 6. Next appointment for quick overview
-$stmt = $pdo->prepare("SELECT a.*, u.name AS doctor_name, d.specialization
-                       FROM appointments a
-                       JOIN doctors d ON a.doctor_id = d.id
-                       JOIN users u ON d.user_id = u.id
-                       WHERE a.patient_id = ? AND a.appointment_date >= CURDATE() AND a.status IN ('pending','confirmed')
-                       ORDER BY a.appointment_date ASC, a.appointment_time ASC
-                       LIMIT 1");
-$stmt->execute([$profileId]);
-$nextAppointment = $stmt->fetch();
-
-// 7. Latest vitals snapshot
-$stmt = $pdo->prepare("SELECT weight, bp_systolic, bp_diastolic, sugar_level, log_date
-                       FROM patient_vitals
-                       WHERE patient_id = ?
-                       ORDER BY log_date DESC, created_at DESC
-                       LIMIT 1");
-$stmt->execute([$profileId]);
-$latestVitals = $stmt->fetch();
-
-// 8. Quick health card data
-$stmt = $pdo->prepare("SELECT blood_group, disease, emergency_contact
-                       FROM patients
-                       WHERE id = ?
-                       LIMIT 1");
-$stmt->execute([$profileId]);
-$quickHealth = $stmt->fetch();
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -267,8 +182,8 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 <aside class="sidebar" id="sidebar">
   <a class="sidebar-brand" href="#"><div class="sb-logo-icon"><i class="fas fa-shield-heart"></i></div><div class="sb-logo-text"><span class="name">Med Alert Plus</span><span class="tag">Patient Portal</span></div></a>
   <div class="sidebar-user">
-    <div class="su-avatar"><?= strtoupper($userName[0]) ?></div>
-    <div class="su-info"><div class="su-name"><?= htmlspecialchars($userName) ?></div><div class="su-role">Patient</div></div>
+    <div class="su-avatar">U</div>
+    <div class="su-info"><div class="su-name">Patient Name</div><div class="su-role">Patient</div></div>
   </div>
   <nav class="sidebar-nav">
     <button class="nav-item active" onclick="showTab('overview')"><i class="fas fa-home"></i> Overview</button>
@@ -287,28 +202,20 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 <div class="main-content">
   <header class="top-bar">
     <div class="top-bar-left">
-      <div><div class="page-title" id="pageTitle">Dashboard Overview</div><div class="page-subtitle" id="pageSubtitle">Welcome back, <?= htmlspecialchars($userName) ?>!</div></div>
+      <div><div class="page-title" id="pageTitle">Dashboard Overview</div><div class="page-subtitle" id="pageSubtitle">Welcome back, <span class="su-name">Patient</span>!</div></div>
     </div>
     <div class="top-bar-right">
       <button class="sos-btn" onclick="triggerSOS()"><i class="fas fa-exclamation-triangle"></i> SOS</button>
       <button class="theme-btn" onclick="toggleTheme()" id="themeToggle"><i class="fas fa-moon"></i></button>
-      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fas fa-bell"></i><?php if($unreadCount > 0): ?><span class="notif-badge"><?= $unreadCount ?></span><?php endif; ?></button>
-      <div class="top-avatar"><?= strtoupper($userName[0]) ?></div>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fas fa-bell"></i></button>
+      <div class="top-avatar">U</div>
     </div>
   </header>
 
   <div id="notifPanel" class="notif-panel" style="display:none">
     <div class="notif-panel-hdr"><span>Notifications</span></div>
     <div id="notifList">
-      <?php foreach($notifications as $n): ?>
-        <div class="notif-item <?= $n['is_read'] ? '' : 'unread' ?>">
-          <div class="ni-body">
-            <div class="ni-title"><?= htmlspecialchars($n['title']) ?></div>
-            <div class="ni-msg"><?= htmlspecialchars($n['message']) ?></div>
-            <div class="ni-time"><?= $n['created_at'] ?></time>
-          </div>
-        </div>
-      <?php endforeach; if(empty($notifications)) echo '<div class="empty-state">No new notifications</div>'; ?>
+        <div class="empty-state">No new notifications</div>
     </div>
   </div>
 
@@ -322,10 +229,10 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
       </div>
 
       <div class="stats-row">
-        <div class="stat-card"><div class="stat-icon si-blue"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num"><?= $totalAppt ?></div><div class="stat-label">Total Appointments</div></div></div>
-        <div class="stat-card"><div class="stat-icon si-green"><i class="fas fa-pills"></i></div><div class="stat-info"><div class="stat-num"><?= $totalMeds ?></div><div class="stat-label">Active Reminders</div></div></div>
-        <div class="stat-card"><div class="stat-icon si-orange"><i class="fas fa-clock"></i></div><div class="stat-info"><div class="stat-num"><?= $pendingAppt ?></div><div class="stat-label">Pending</div></div></div>
-        <div class="stat-card"><div class="stat-icon si-purple"><i class="fas fa-stethoscope"></i></div><div class="stat-info"><div class="stat-num"><?= $sympChecks ?></div><div class="stat-label">Checks</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-blue"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num" id="stat-totalAppt">0</div><div class="stat-label">Total Appointments</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-green"><i class="fas fa-pills"></i></div><div class="stat-info"><div class="stat-num" id="stat-totalMeds">0</div><div class="stat-label">Active Reminders</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-orange"><i class="fas fa-clock"></i></div><div class="stat-info"><div class="stat-num" id="stat-pendingAppt">0</div><div class="stat-label">Pending</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-purple"><i class="fas fa-stethoscope"></i></div><div class="stat-info"><div class="stat-num" id="stat-sympChecks">0</div><div class="stat-label">Checks</div></div></div>
       </div>
 
       <div class="overview-grid">
@@ -333,48 +240,14 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
           <div class="card">
             <div class="card-header">Today Timeline</div>
             <div class="card-body">
-              <?php if($nextAppointment): ?>
-                <div class="timeline-item">
-                  <div>
-                    <div style="font-weight:700">Appointment with Dr. <?= htmlspecialchars($nextAppointment['doctor_name']) ?></div>
-                    <div style="font-size:12px;color:var(--muted)"><?= $nextAppointment['appointment_date'] ?> <?= $nextAppointment['appointment_time'] ?> · <?= htmlspecialchars($nextAppointment['specialization']) ?></div>
-                  </div>
-                  <div>
-                    <?php if($nextAppointment['type'] === 'online' && !empty($nextAppointment['meet_link'])): ?>
-                      <a class="btn btn-primary" href="<?= htmlspecialchars($nextAppointment['meet_link']) ?>" target="_blank" rel="noopener">Join</a>
-                    <?php else: ?>
-                      <button class="btn" onclick="showTab('appointments')">View</button>
-                    <?php endif; ?>
-                  </div>
-                </div>
-              <?php endif; ?>
-
-              <?php foreach($medicines as $m): ?>
-                <div class="timeline-item">
-                  <div>
-                    <div style="font-weight:700"><?= htmlspecialchars($m['medicine_name']) ?></div>
-                    <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($m['dosage']) ?> · <?= htmlspecialchars($m['frequency']) ?></div>
-                  </div>
-                  <div>
-                    <button class="btn" style="background:#ecfdf5;color:#166534" onclick="markMedicineAdherence(<?= $m['id'] ?>, 'taken')">Taken</button>
-                  </div>
-                </div>
-              <?php endforeach; if(empty($medicines) && !$nextAppointment) echo '<div class="empty-state">No events for today.</div>'; ?>
+              <div class="empty-state">Manage tasks from individual tabs.</div>
             </div>
           </div>
 
           <div class="card" style="margin-top:24px">
             <div class="card-header">Upcoming Appointments</div>
-            <div class="card-body">
-              <?php foreach($upcoming as $a): ?>
-                <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
-                  <div style="flex:1">
-                    <div style="font-weight:700">Dr. <?= htmlspecialchars($a['doctor_name']) ?></div>
-                    <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($a['specialization']) ?> · <?= $a['appointment_date'] ?> <?= $a['appointment_time'] ?></div>
-                  </div>
-                  <span class="badge badge-info"><?= $a['status'] ?></span>
-                </div>
-              <?php endforeach; if(empty($upcoming)) echo '<div class="empty-state">No upcoming appointments</div>'; ?>
+            <div class="card-body" id="patientUpcomingAppts">
+               <div class="empty-state">Loading appointments...</div>
             </div>
           </div>
         </div>
@@ -382,21 +255,15 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
         <div>
           <div class="card">
             <div class="card-header">Personal Health Card</div>
-            <div class="card-body">
-              <div style="margin-bottom:8px"><strong>Blood Group:</strong> <?= htmlspecialchars($quickHealth['blood_group'] ?? '-') ?></div>
-              <div style="margin-bottom:8px"><strong>Chronic Condition:</strong> <?= htmlspecialchars($quickHealth['disease'] ?? '-') ?></div>
-              <div style="margin-bottom:8px"><strong>Emergency Contact:</strong> <?= htmlspecialchars($quickHealth['emergency_contact'] ?? '-') ?></div>
-              <button class="btn btn-primary" style="margin-top:8px" onclick="showTab('profile')">Update Profile</button>
+            <div class="card-body" id="patientHealthCard">
+              <div class="empty-state">Go to profile tab to load data...</div>
             </div>
           </div>
 
           <div class="card" style="margin-top:24px">
             <div class="card-header">Latest Vitals Snapshot</div>
-            <div class="card-body">
-              <div style="margin-bottom:8px"><strong>Date:</strong> <?= htmlspecialchars($latestVitals['log_date'] ?? '-') ?></div>
-              <div style="margin-bottom:8px"><strong>Weight:</strong> <?= htmlspecialchars($latestVitals['weight'] ?? '-') ?> kg</div>
-              <div style="margin-bottom:8px"><strong>BP:</strong> <?= htmlspecialchars($latestVitals['bp_systolic'] ?? '-') ?>/<?= htmlspecialchars($latestVitals['bp_diastolic'] ?? '-') ?></div>
-              <div style="margin-bottom:8px"><strong>Sugar:</strong> <?= htmlspecialchars($latestVitals['sugar_level'] ?? '-') ?> mg/dL</div>
+            <div class="card-body" id="patientVitalsSnapshot">
+              <div class="empty-state">Go to analytics tab to log vitals...</div>
             </div>
           </div>
 
@@ -458,9 +325,9 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                    <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="send_email" value="1" checked> Email Notify</label>
                    <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="send_whatsapp" value="1"> WhatsApp Notify</label>
                 </div>
-                <div id="whatsappField" style="margin-bottom:20px; display: <?= $whatsappNumber ? 'block' : 'block' ?>;">
+                <div id="whatsappField" style="margin-bottom:20px;">
                    <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">WhatsApp Number</label>
-                   <input type="text" name="whatsapp_number" value="<?= htmlspecialchars($whatsappNumber) ?>" placeholder="e.g. +1234567890" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   <input type="text" name="whatsapp_number" placeholder="e.g. +1234567890" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width:100%">Save Reminder</button>
              </form>
@@ -542,7 +409,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                    </div>
                    <div style="margin-bottom:20px">
                       <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Log Date</label>
-                      <input type="date" name="log_date" value="<?= date('Y-m-d') ?>" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                      <input type="date" name="log_date" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;" id="vitalsLogDateObj">
                    </div>
                    <button type="submit" class="btn btn-primary" style="width:100%">Save Vitals</button>
                 </form>
@@ -723,7 +590,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
                  <div>
                     <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Preferred Date</label>
-                    <input type="date" name="date" required min="<?= date('Y-m-d') ?>" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                    <input type="date" name="date" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;" id="bookingDateInput">
                  </div>
                  <div>
                     <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Preferred Time</label>

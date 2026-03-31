@@ -1,27 +1,3 @@
-<?php
-session_start();
-require_once '../config/db.php';
-
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../index.php");
-    exit;
-}
-
-$userName = $_SESSION['user_name'];
-
-// 1. Stats
-$totalUsers = $pdo->query("SELECT COUNT(*) FROM users WHERE status='active'")->fetchColumn();
-$totalDoc = $pdo->query("SELECT COUNT(*) FROM doctors WHERE approval_status='approved'")->fetchColumn();
-$pendingDoc = $pdo->query("SELECT COUNT(*) FROM doctors WHERE approval_status='pending'")->fetchColumn();
-
-// 2. Pending Doctors
-$pendingDoctors = $pdo->query("SELECT d.*, u.name, u.email, u.phone FROM doctors d JOIN users u ON d.user_id = u.id WHERE d.approval_status = 'pending' ORDER BY u.created_at DESC")->fetchAll();
-
-// 3. User Statistics for Charts
-$patientCount = $pdo->query("SELECT COUNT(*) FROM users WHERE role='patient' AND status='active'")->fetchColumn();
-$doctorCount = $pdo->query("SELECT COUNT(*) FROM users WHERE role='doctor' AND status='active'")->fetchColumn();
-
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -215,10 +191,10 @@ tr:hover { background: #f8fafc; }
 <div class="dashboard-layout">
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand"><div class="sb-logo-icon"><i class="fas fa-shield-heart"></i></div><div class="sb-logo-text"><span class="name">Med Alert</span><span class="tag">Admin Panel</span></div></div>
-  <div class="sidebar-user"><div class="su-avatar">A</div><div class="su-info"><div class="su-name"><?= htmlspecialchars($userName) ?></div><div class="su-role">System Administrator</div></div></div>
+  <div class="sidebar-user"><div class="su-avatar">A</div><div class="su-info"><div class="su-name">Admin</div><div class="su-role">System Administrator</div></div></div>
   <nav class="sidebar-nav">
     <button class="nav-item active" onclick="showTab('overview')"><i class="fas fa-tachometer-alt"></i> Overview</button>
-    <button class="nav-item" onclick="showTab('approvals')"><i class="fas fa-user-check"></i> Pending Approvals <span class="badge badge-danger"><?= $pendingDoc ?></span></button>
+    <button class="nav-item" onclick="showTab('approvals')"><i class="fas fa-user-check"></i> Pending Approvals <span class="badge badge-danger" id="stat-pending">0</span></button>
     <button class="nav-item" onclick="showTab('registrations')"><i class="fas fa-users"></i> User Management</button>
   </nav>
   <div class="sidebar-footer">
@@ -235,9 +211,9 @@ tr:hover { background: #f8fafc; }
     <!-- Overview Tab -->
     <div class="tab-pane active" id="tab-overview">
       <div class="stats-row">
-        <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6"><i class="fas fa-users"></i></div><div class="stat-info"><div class="stat-num"><?= $totalUsers ?></div><div class="stat-label">Total Users</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:#ecfdf5;color:#10b981"><i class="fas fa-user-md"></i></div><div class="stat-info"><div class="stat-num"><?= $totalDoc ?></div><div class="stat-label">Doctors</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:#fff7ed;color:#f59e0b"><i class="fas fa-user-clock"></i></div><div class="stat-info"><div class="stat-num"><?= $pendingDoc ?></div><div class="stat-label">Pending Approval</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6"><i class="fas fa-users"></i></div><div class="stat-info"><div class="stat-num" id="stat-users">0</div><div class="stat-label">Total Users</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#ecfdf5;color:#10b981"><i class="fas fa-user-md"></i></div><div class="stat-info"><div class="stat-num" id="stat-doctors">0</div><div class="stat-label">Doctors</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#fff7ed;color:#f59e0b"><i class="fas fa-user-clock"></i></div><div class="stat-info"><div class="stat-num" id="stat-pending-overview">0</div><div class="stat-label">Pending Approval</div></div></div>
       </div>
       
       <div style="display:grid;grid-template-columns:1fr 2fr;gap:24px;">
@@ -249,16 +225,8 @@ tr:hover { background: #f8fafc; }
          </div>
          <div class="card">
             <div class="card-header">Doctor Approvals Quick View</div>
-            <div class="card-body">
-               <?php foreach(array_slice($pendingDoctors, 0, 5) as $pd): ?>
-                  <div style="display:flex;align-items:center;gap:15px;padding:12px 0;border-bottom:1px solid var(--border)">
-                     <div style="flex:1">
-                        <div style="font-weight:700">Dr. <?= htmlspecialchars($pd['name']) ?></div>
-                        <div style="font-size:12px;color:var(--muted)"><?= htmlspecialchars($pd['specialization']) ?></div>
-                     </div>
-                     <button class="btn btn-primary btn-sm" onclick="showTab('approvals')">Review</button>
-                  </div>
-               <?php endforeach; if(empty($pendingDoctors)) echo '<div class="empty-state">No pending approvals</div>'; ?>
+            <div class="card-body" id="adminApprovalsQuickView">
+               <div class="empty-state">Loading approvals...</div>
             </div>
          </div>
       </div>
@@ -271,21 +239,8 @@ tr:hover { background: #f8fafc; }
           <div class="card-body">
              <table>
                 <thead><tr><th>Name</th><th>Specialization</th><th>License</th><th>Contact</th><th>Actions</th></tr></thead>
-                <tbody>
-                   <?php foreach($pendingDoctors as $pd): ?>
-                      <tr>
-                         <td><strong>Dr. <?= htmlspecialchars($pd['name']) ?></strong><br><small><?= $pd['email'] ?></small></td>
-                         <td><?= htmlspecialchars($pd['specialization']) ?></td>
-                         <td><code style="background:#f1f5f9;padding:2px 5px;border-radius:4px"><?= htmlspecialchars($pd['license_number']) ?></code></td>
-                         <td><?= htmlspecialchars($pd['phone']) ?></td>
-                         <td>
-                            <div style="display:flex;gap:10px">
-                               <button class="btn" style="background:#10b981;color:#fff" onclick="adminAction('approve_doctor', {doctor_id:<?= $pd['id'] ?>, user_id:<?= $pd['user_id'] ?>})">Approve</button>
-                               <button class="btn" style="background:#ef4444;color:#fff" onclick="adminAction('reject_doctor', {doctor_id:<?= $pd['id'] ?>, user_id:<?= $pd['user_id'] ?>})">Reject</button>
-                            </div>
-                         </td>
-                      </tr>
-                   <?php endforeach; if(empty($pendingDoctors)) echo '<tr><td colspan="5" class="empty-state">No pending doctor registrations</td></tr>'; ?>
+                <tbody id="adminApprovalsTableBody">
+                   <tr><td colspan="5" class="empty-state">Loading...</td></tr>
                 </tbody>
              </table>
           </div>
@@ -328,21 +283,27 @@ tr:hover { background: #f8fafc; }
 <script src="../assets/js/dashboard.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+let distChart = null;
+
+function drawUserDistributionChart(patients, doctors) {
    const ctx = document.getElementById('userDistChart').getContext('2d');
-   new Chart(ctx, {
+   if (distChart) distChart.destroy();
+   distChart = new Chart(ctx, {
       type: 'doughnut',
       data: {
          labels: ['Patients', 'Doctors'],
          datasets: [{
-            data: [<?= $patientCount ?>, <?= $doctorCount ?>],
+            data: [patients, doctors],
             backgroundColor: ['#8b5cf6', '#3b82f6'],
             borderWidth: 0
          }]
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
    });
-   // Auto-load user list
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+   if (typeof loadAdminApprovals === 'function') loadAdminApprovals();
    if (typeof loadUserList === 'function') loadUserList();
 });
 </script>

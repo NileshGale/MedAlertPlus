@@ -133,6 +133,13 @@ try {
             echo json_encode($response);
             exit;
 
+        case 'pending_doctors':
+            if ($role !== 'admin') { echo json_encode(['success'=>false]); exit; }
+            $stmt = $pdo->query("SELECT d.*, u.name, u.email, u.phone FROM doctors d JOIN users u ON d.user_id = u.id WHERE d.approval_status = 'pending' ORDER BY u.created_at DESC");
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
         case 'patient_appointments':
             if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
             $stmt = $pdo->prepare("SELECT a.*, u.name AS doctor_name, d.specialization, d.clinic_name

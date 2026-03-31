@@ -598,6 +598,55 @@ async function loadUserList() {
    } catch(e) {}
 }
 
+async function loadAdminApprovals() {
+   const container = document.getElementById('adminApprovalsTableBody');
+   const quickView = document.getElementById('adminApprovalsQuickView');
+   try {
+      const res = await fetch('../api/dashboard_data.php?type=pending_doctors');
+      const data = await res.json();
+      if (!data.success) return;
+      
+      const pds = data.data || [];
+      
+      if (quickView) {
+          if (pds.length === 0) {
+              quickView.innerHTML = '<div class="empty-state">No pending approvals</div>';
+          } else {
+              quickView.innerHTML = pds.slice(0, 5).map(pd => `
+                  <div style="display:flex;align-items:center;gap:15px;padding:12px 0;border-bottom:1px solid var(--border)">
+                     <div style="flex:1">
+                        <div style="font-weight:700">Dr. ${pd.name}</div>
+                        <div style="font-size:12px;color:var(--muted)">${pd.specialization}</div>
+                     </div>
+                     <button class="btn btn-primary btn-sm" onclick="showTab('approvals')">Review</button>
+                  </div>
+              `).join('');
+          }
+      }
+      
+      if (container) {
+          if (pds.length === 0) {
+              container.innerHTML = '<tr><td colspan="5" class="empty-state">No pending doctor registrations</td></tr>';
+          } else {
+              container.innerHTML = pds.map(pd => `
+                  <tr>
+                     <td><strong>Dr. ${pd.name}</strong><br><small>${pd.email}</small></td>
+                     <td>${pd.specialization}</td>
+                     <td><code style="background:#f1f5f9;padding:2px 5px;border-radius:4px">${pd.license_number}</code></td>
+                     <td>${pd.phone}</td>
+                     <td>
+                        <div style="display:flex;gap:10px">
+                           <button class="btn" style="background:#10b981;color:#fff" onclick="adminAction('approve_doctor', {doctor_id:${pd.id}, user_id:${pd.user_id}})">Approve</button>
+                           <button class="btn" style="background:#ef4444;color:#fff" onclick="adminAction('reject_doctor', {doctor_id:${pd.id}, user_id:${pd.user_id}})">Reject</button>
+                        </div>
+                     </td>
+                  </tr>
+              `).join('');
+          }
+      }
+   } catch (e) { console.error("Could not load pending doctors", e); }
+}
+
 async function loadPatientReports() {
   const container = document.getElementById('patientReportsList');
   if (!container) return;
@@ -949,7 +998,88 @@ async function loadHealthAnalytics() {
 }
 
 // Init sub-tab loads
-document.addEventListener('DOMContentLoaded', () => {
+async function initDashboard() {
+   let role = '';
+   const path = window.location.pathname.toLowerCase();
+   if (path.includes('patient.')) role = 'patient';
+   if (path.includes('doctor.')) role = 'doctor';
+   if (path.includes('admin.')) role = 'admin';
+
+   if (role) {
+       try {
+           const res = await fetch('../api/dashboard_data.php?type=initial_load');
+           if (res.redirected) { window.location.href = '../login.html'; return; }
+           const json = await res.json();
+           
+           if (!json.success || !json.user || json.user.role !== role) {
+               window.location.href = '../login.html';
+               return;
+           }
+
+           // Populate user info
+           document.querySelectorAll('.su-name').forEach(el => el.textContent = role === 'doctor' ? 'Dr. ' + json.user.name : json.user.name);
+           document.querySelectorAll('.su-avatar, .top-avatar').forEach(el => el.textContent = (json.user.name || 'U').charAt(0).toUpperCase());
+
+           if (role === 'doctor' && json.user.specialization) {
+               document.querySelectorAll('.su-role').forEach(el => el.textContent = json.user.specialization);
+               const cl = document.getElementById('clinicToggleLabel');
+               if (cl) {
+                   cl.className = 'badge ' + (json.user.clinic_status === 'open' ? 'badge-success' : 'badge-danger');
+                   cl.textContent = json.user.clinic_status.toUpperCase();
+               }
+           }
+
+           // Populate stats
+           if (json.data && json.data.stats) {
+               const st = json.data.stats;
+               if (role === 'patient') {
+                   if (document.getElementById('stat-totalAppt')) document.getElementById('stat-totalAppt').textContent = st.totalAppt || 0;
+                   if (document.getElementById('stat-totalMeds')) document.getElementById('stat-totalMeds').textContent = st.totalMeds || 0;
+                   if (document.getElementById('stat-pendingAppt')) document.getElementById('stat-pendingAppt').textContent = st.pendingAppt || 0;
+                   if (document.getElementById('stat-sympChecks')) document.getElementById('stat-sympChecks').textContent = st.sympChecks || 0;
+                   
+                   const upCont = document.getElementById('patientUpcomingAppts');
+                   if (upCont && json.data.upcoming) {
+                       if (json.data.upcoming.length === 0) upCont.innerHTML = '<div class="empty-state">No upcoming appointments.</div>';
+                       else {
+                           upCont.innerHTML = json.data.upcoming.map(a => `
+                              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+                                  <div>
+                                      <div style="font-weight:700">Dr. ${a.doctor_name || 'Doctor'}</div>
+                                      <div style="font-size:12px;color:var(--muted)">${a.appointment_date} at ${a.appointment_time}</div>
+                                  </div>
+                                  <span class="badge ${a.status==='confirmed'?'badge-success':(a.status==='pending'?'badge-warning':'badge-danger')}">${a.status}</span>
+                              </div>
+                           `).join('');
+                       }
+                   }
+               }
+               if (role === 'admin') {
+                   if (document.getElementById('stat-users')) document.getElementById('stat-users').textContent = st.users || 0;
+                   if (document.getElementById('stat-doctors')) document.getElementById('stat-doctors').textContent = st.doctors || 0;
+                   if (document.getElementById('stat-pending')) document.getElementById('stat-pending').textContent = st.pending || 0;
+                   if (typeof drawUserDistributionChart === 'function') drawUserDistributionChart(st.users || 0, st.doctors || 0);
+               }
+               if (role === 'doctor') {
+                   if (document.getElementById('stat-total')) document.getElementById('stat-total').textContent = st.total || 0;
+                   if (document.getElementById('stat-pending')) document.getElementById('stat-pending').textContent = st.pending || 0;
+                   if (document.getElementById('stat-today')) document.getElementById('stat-today').textContent = st.today || 0;
+               }
+           }
+           
+           if (role === 'patient') {
+               const today = new Date().toISOString().split('T')[0];
+               if (document.getElementById('bookingDateInput')) document.getElementById('bookingDateInput').min = today;
+               if (document.getElementById('vitalsLogDateObj')) {
+                   document.getElementById('vitalsLogDateObj').max = today;
+                   document.getElementById('vitalsLogDateObj').value = today;
+               }
+           }
+       } catch (err) {
+           console.error("Dashboard init error:", err);
+       }
+   }
+
    if (document.getElementById('medicineList')) loadMedicines();
    if (document.getElementById('userManagementTable')) loadUserList();
    if (document.getElementById('patientAppointmentsList')) loadPatientAppointments();
@@ -959,9 +1089,11 @@ document.addEventListener('DOMContentLoaded', () => {
    if (document.getElementById('doctorScheduleRows')) loadDoctorSchedule();
    if (document.getElementById('doctorPatientsList')) loadDoctorPatients();
    if (document.getElementById('doctorProfileForm')) loadDoctorProfile();
-   initMedicineSuggestions();
-   loadMedicineAdherenceSummary();
-});
+   if (typeof initMedicineSuggestions === 'function') initMedicineSuggestions();
+   if (typeof loadMedicineAdherenceSummary === 'function') loadMedicineAdherenceSummary();
+}
+
+document.addEventListener('DOMContentLoaded', initDashboard);
 
 const reportUploadForm = document.getElementById('reportUploadForm');
 if (reportUploadForm) {

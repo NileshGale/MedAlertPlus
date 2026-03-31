@@ -1,47 +1,3 @@
-<?php
-session_start();
-require_once '../config/db.php';
-
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'doctor') {
-    header("Location: ../index.html");
-    exit;
-}
-
-$userId = $_SESSION['user_id'];
-$profileId = $_SESSION['profile_id'];
-$userName = $_SESSION['user_name'];
-
-// 1. Stats
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ?");
-$stmt->execute([$profileId]);
-$totalAppt = $stmt->fetchColumn();
-
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND status='pending'");
-$stmt->execute([$profileId]);
-$pendingAppt = $stmt->fetchColumn();
-
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = CURDATE()");
-$stmt->execute([$profileId]);
-$todayAppt = $stmt->fetchColumn();
-
-// 2. Today's Appointments
-$stmt = $pdo->prepare("SELECT a.*, u.name as patient_name 
-                       FROM appointments a 
-                       JOIN patients p ON a.patient_id = p.id 
-                       JOIN users u ON p.user_id = u.id 
-                       WHERE a.doctor_id = ? AND a.appointment_date = CURDATE() 
-                       ORDER BY a.appointment_time ASC");
-$stmt->execute([$profileId]);
-$todaySchedule = $stmt->fetchAll();
-
-// 3. Specialization
-$stmt = $pdo->prepare("SELECT * FROM doctors WHERE id = ?");
-$stmt->execute([$profileId]);
-$doctor = $stmt->fetch();
-$specialization = $doctor['specialization'];
-$clinicStatus = $doctor['clinic_status'];
-
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -120,8 +76,8 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand"><div class="sb-logo-icon"><i class="fas fa-shield-heart"></i></div><div class="sb-logo-text"><span class="name">Med Alert Plus</span><span class="tag">Doctor Portal</span></div></div>
   <div class="sidebar-user">
-    <div class="su-avatar"><?= strtoupper($userName[0]) ?></div>
-    <div class="su-info"><div class="su-name">Dr. <?= htmlspecialchars($userName) ?></div><div class="su-role"><?= htmlspecialchars($specialization) ?></div></div>
+    <div class="su-avatar">D</div>
+    <div class="su-info"><div class="su-name">Dr. Name</div><div class="su-role">Specialist</div></div>
   </div>
   <nav class="sidebar-nav">
     <button class="nav-item active" onclick="showTab('overview')"><i class="fas fa-home"></i> Overview</button>
@@ -144,38 +100,25 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
       <div style="display:flex;align-items:center;gap:10px;margin-right:20px;padding:5px 15px;background:var(--bg);border:1px solid var(--border);border-radius:20px;">
          <span style="font-size:12px;font-weight:700">Clinic Status:</span>
          <div class="status-toggle" onclick="toggleClinicStatus()" style="cursor:pointer;display:flex;align-items:center;gap:5px;">
-            <span id="statusLabel" class="badge <?= $clinicStatus==='open'?'badge-success':'badge-danger' ?>" style="text-transform:uppercase"><?= $clinicStatus ?></span>
+            <span id="statusLabel" class="badge badge-danger" style="text-transform:uppercase">CLOSED</span>
          </div>
       </div>
       <button class="theme-btn" onclick="toggleTheme()" id="themeToggle"><i class="fas fa-moon"></i></button>
-      <div class="top-avatar"><?= strtoupper($userName[0]) ?></div>
+      <div class="top-avatar">D</div>
     </div>
   </header>
   <div class="page-content">
     <!-- Overview Tab -->
     <div class="tab-pane active" id="tab-overview">
       <div class="stats-row">
-        <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num"><?= $totalAppt ?></div><div class="stat-label">Total Appointments</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:#fff7ed;color:#f59e0b"><i class="fas fa-hourglass-half"></i></div><div class="stat-info"><div class="stat-num"><?= $pendingAppt ?></div><div class="stat-label">Pending</div></div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:#ecfdf5;color:#10b981"><i class="fas fa-calendar-day"></i></div><div class="stat-info"><div class="stat-num"><?= $todayAppt ?></div><div class="stat-label">Today</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total Appointments</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#fff7ed;color:#f59e0b"><i class="fas fa-hourglass-half"></i></div><div class="stat-info"><div class="stat-num" id="stat-pending">0</div><div class="stat-label">Pending</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#ecfdf5;color:#10b981"><i class="fas fa-calendar-day"></i></div><div class="stat-info"><div class="stat-num" id="stat-today">0</div><div class="stat-label">Today</div></div></div>
       </div>
       <div class="card">
         <div class="card-header">Today's Schedule</div>
-        <div class="card-body">
-          <?php foreach($todaySchedule as $s): ?>
-            <div style="display:flex;align-items:center;gap:15px;padding:15px 0;border-bottom:1px solid var(--border)">
-              <div style="flex:1">
-                <div style="font-weight:700"><?= htmlspecialchars($s['patient_name']) ?></div>
-                <div style="font-size:12px;color:var(--muted)"><?= $s['appointment_time'] ?> · <?= ucfirst($s['type']) ?></div>
-              </div>
-              <div style="display:flex;gap:10px">
-                 <?php if($s['type']==='online'): ?>
-                    <button class="btn" style="background:#dbeafe;color:#1e40af;border:none" onclick="manageMeetLink(<?= $s['id'] ?>, '<?= $s['meet_link'] ?>')"><i class="fas fa-video"></i> Meet</button>
-                 <?php endif; ?>
-                 <button class="btn btn-primary" onclick="manageAppointment(<?= $s['id'] ?>)"><i class="fas fa-edit"></i> Manage</button>
-              </div>
-            </div>
-          <?php endforeach; if(empty($todaySchedule)) echo '<div class="empty-state">No appointments today</div>'; ?>
+        <div class="card-body" id="doctorTodayContent">
+           <div class="empty-state">Manage appointments from the appointments tab.</div>
         </div>
       </div>
     </div>
