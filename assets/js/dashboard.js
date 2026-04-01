@@ -2350,22 +2350,6 @@ async function initDashboard() {
 
 document.addEventListener('DOMContentLoaded', initDashboard);
 
-const reportUploadForm = document.getElementById('reportUploadForm');
-if (reportUploadForm) {
-  reportUploadForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(reportUploadForm);
-    const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
-    const json = await res.json();
-    if (json.success) {
-      showToast(json.message || 'Uploaded', 'success');
-      reportUploadForm.reset();
-      loadPatientReports();
-    } else {
-      showToast(json.message || 'Upload failed', 'error');
-    }
-  });
-}
 
 document.getElementById('patientAppointmentStatusFilter')?.addEventListener('change', loadPatientAppointments);
 document.getElementById('patientAppointmentTypeFilter')?.addEventListener('change', loadPatientAppointments);
@@ -2634,37 +2618,31 @@ function renderPatientReports(reports) {
   const container = document.getElementById('patientReportsList');
   if (!container) return;
 
-  if (reports.length === 0) {
+  if (!Array.isArray(reports) || reports.length === 0) {
     container.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-        <input type="text" id="reportSearchInput" placeholder="Search report name..." style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
-        <select id="reportTypeFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+        <select id="reportTypeFilter" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
           <option value="all">All Types</option>
-          <option value="pdf">PDF</option>
-          <option value="doc">DOC</option>
-          <option value="docx">DOCX</option>
-          <option value="jpg">JPG</option>
-          <option value="jpeg">JPEG</option>
-          <option value="png">PNG</option>
         </select>
       </div>
-      <div class="empty-state">No reports uploaded yet.</div>
+      <div class="empty-state" style="text-align:center;padding:40px 20px;color:var(--muted);">
+        <i class="fas fa-file-medical-alt" style="font-size:40px;margin-bottom:15px;display:block;opacity:0.3;"></i>
+        <p>No reports uploaded yet. Upload your first medical report to get started!</p>
+      </div>
     `;
-    setupReportFilters();
     return;
   }
 
   let html = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-      <input type="text" id="reportSearchInput" placeholder="Search report name..." value="${document.getElementById('reportSearchInput')?.value || ''}" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
-      <select id="reportTypeFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
-        <option value="all" ${document.getElementById('reportTypeFilter')?.value === 'all' ? 'selected' : ''}>All Types</option>
-        <option value="pdf" ${document.getElementById('reportTypeFilter')?.value === 'pdf' ? 'selected' : ''}>PDF</option>
-        <option value="doc" ${document.getElementById('reportTypeFilter')?.value === 'doc' ? 'selected' : ''}>DOC</option>
-        <option value="docx" ${document.getElementById('reportTypeFilter')?.value === 'docx' ? 'selected' : ''}>DOCX</option>
-        <option value="jpg" ${document.getElementById('reportTypeFilter')?.value === 'jpg' ? 'selected' : ''}>JPG</option>
-        <option value="jpeg" ${document.getElementById('reportTypeFilter')?.value === 'jpeg' ? 'selected' : ''}>JPEG</option>
-        <option value="png" ${document.getElementById('reportTypeFilter')?.value === 'png' ? 'selected' : ''}>PNG</option>
+      <select id="reportTypeFilter" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+        <option value="all" ${document.getElementById('reportTypeFilter')?.value === 'all' ? 'selected' : ''}>All Types (Showing All Uploaded Reports)</option>
+        <option value="pdf" ${document.getElementById('reportTypeFilter')?.value === 'pdf' ? 'selected' : ''}>PDF Records</option>
+        <option value="doc" ${document.getElementById('reportTypeFilter')?.value === 'doc' ? 'selected' : ''}>DOC / Word</option>
+        <option value="docx" ${document.getElementById('reportTypeFilter')?.value === 'docx' ? 'selected' : ''}>DOCX / Word</option>
+        <option value="jpg" ${document.getElementById('reportTypeFilter')?.value === 'jpg' ? 'selected' : ''}>JPG Images</option>
+        <option value="jpeg" ${document.getElementById('reportTypeFilter')?.value === 'jpeg' ? 'selected' : ''}>JPEG Images</option>
+        <option value="png" ${document.getElementById('reportTypeFilter')?.value === 'png' ? 'selected' : ''}>PNG Images</option>
       </select>
     </div>
     <div class="reports-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:15px;max-height:400px;overflow-y:auto;padding:5px;">
@@ -2745,6 +2723,7 @@ const reportForm = document.getElementById('reportUploadForm');
 if (reportForm) {
   reportForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    e.stopImmediatePropagation();
     const fd = new FormData(reportForm);
     const btn = reportForm.querySelector('button[type="submit"]');
     const originalText = btn.textContent;

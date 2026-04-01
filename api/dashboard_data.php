@@ -204,6 +204,27 @@ try {
             echo json_encode($response);
             exit;
 
+        case 'patient_reports':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $pdo->exec("CREATE TABLE IF NOT EXISTS patient_reports (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                patient_id INT NOT NULL,
+                file_name VARCHAR(255) NOT NULL,
+                file_path VARCHAR(255) NOT NULL,
+                file_type VARCHAR(50) NOT NULL,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_patient (patient_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, uploaded_at 
+                                   FROM patient_reports 
+                                   WHERE patient_id = ? 
+                                   ORDER BY uploaded_at DESC");
+            $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
         case 'medicine_adherence_summary':
             if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
             $pdo->exec("CREATE TABLE IF NOT EXISTS medicine_adherence (
