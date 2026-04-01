@@ -1779,110 +1779,196 @@ if (apptForm) {
   });
 }
 
-const vitalsFm = document.getElementById('vitalsForm');
-if (vitalsFm) {
-   vitalsFm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(vitalsFm);
-      try {
-         const res = await fetch('../api/patient_api.php', { method: 'POST', body: formData });
-         const data = await res.json();
-         if (data.success) {
-            showToast(data.message, 'success');
-            vitalsFm.reset();
-            loadHealthAnalytics();
-         } else showToast(data.message, 'error');
-      } catch (err) { showToast('Saving failed', 'error'); }
-   });
-}
-
-let vChart1 = null;
-let vChart2 = null;
+// ---- Health Analytics Logic ----
+let vChart1 = null, vChart2 = null;
 
 async function loadHealthAnalytics() {
-   const container = document.getElementById('vitalsSummary');
-   if (!container) return;
-   
-   try {
-      const res = await fetch('../api/dashboard_data.php?type=vitals_history');
-      const json = await res.json();
-      if (!json.success || !json.data || json.data.length === 0) {
-         container.innerHTML = '<div class="empty-state">No vitals logged yet. Start by logging today\'s metrics!</div>';
-         return;
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=patient_vitals');
+    const json = await res.json();
+    if (!json.success) return;
+
+    const vitals = json.data || [];
+    updateHealthSummary(vitals);
+    renderVitalsCharts(vitals);
+    renderVitalsHistory(vitals);
+  } catch (e) {
+    console.error('Failed to load health analytics', e);
+  }
+}
+
+function generateHealthSummaryHtml(last) {
+  if (!last) return '<div class="empty-state">No vitals logged yet.</div>';
+
+  let bmiHtml = '';
+  if (last.weight && last.height) {
+    const bmi = (last.weight / Math.pow(last.height / 100, 2)).toFixed(1);
+    let cat = 'Normal', color = 'var(--success)';
+    if (bmi < 18.5) { cat = 'Underweight'; color = '#3b82f6'; }
+    else if (bmi >= 25 && bmi < 30) { cat = 'Overweight'; color = 'var(--warning)'; }
+    else if (bmi >= 30) { cat = 'Obese'; color = 'var(--danger)'; }
+    
+    bmiHtml = `
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:36px;font-weight:800;color:${color}">${bmi}</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text-light)">BMI Index: <span style="color:${color}">${cat}</span></div>
+      </div>
+    `;
+  }
+
+  let bpHtml = '';
+  if (last.bp_systolic && last.bp_diastolic) {
+    let bpCat = 'Normal', bpColor = 'var(--success)';
+    if (last.bp_systolic >= 140 || last.bp_diastolic >= 90) { bpCat = 'Stage 2 Hypertension'; bpColor = 'var(--danger)'; }
+    else if (last.bp_systolic >= 130 || last.bp_diastolic >= 80) { bpCat = 'Stage 1 Hypertension'; bpColor = 'var(--warning)'; }
+    else if (last.bp_systolic >= 120) { bpCat = 'Elevated'; bpColor = '#fcd34d'; }
+
+    bpHtml = `
+      <div style="padding:15px;background:var(--bg);border-radius:12px;margin-bottom:15px;border:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:4px">Blood Pressure</div>
+        <div style="font-size:18px;font-weight:700">${last.bp_systolic}/${last.bp_diastolic} <span style="font-size:12px;font-weight:600;color:${bpColor};margin-left:8px">${bpCat}</span></div>
+      </div>
+    `;
+  }
+
+  let sugarHtml = '';
+  if (last.sugar_level) {
+    let sCat = 'Normal', sColor = 'var(--success)';
+    if (last.sugar_level >= 200) { sCat = 'High (Diabetic)'; sColor = 'var(--danger)'; }
+    else if (last.sugar_level >= 140) { sCat = 'Pre-diabetic'; sColor = 'var(--warning)'; }
+
+    sugarHtml = `
+      <div style="padding:15px;background:var(--bg);border-radius:12px;border:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:4px">Blood Sugar</div>
+        <div style="font-size:18px;font-weight:700">${last.sugar_level} mg/dL <span style="font-size:12px;font-weight:600;color:${sColor};margin-left:8px">${sCat}</span></div>
+      </div>
+    `;
+  }
+
+  return bmiHtml + bpHtml + sugarHtml;
+}
+
+function updateHealthSummary(vitals) {
+  const container = document.getElementById('vitalsSummary');
+  const snapshot = document.getElementById('patientVitalsSnapshot');
+  if (!vitals || vitals.length === 0) {
+    const empty = '<div class="empty-state">No vitals logged yet.</div>';
+    if (container) container.innerHTML = empty;
+    if (snapshot) snapshot.innerHTML = empty;
+    return;
+  }
+
+  const last = vitals[vitals.length - 1]; 
+  const html = generateHealthSummaryHtml(last);
+  if (container) container.innerHTML = html;
+  if (snapshot) snapshot.innerHTML = html;
+}
+
+function renderVitalsCharts(vitals) {
+  const ctx1 = document.getElementById('mainVitalsChart')?.getContext('2d');
+  const ctx2 = document.getElementById('sugarChart')?.getContext('2d');
+  if (!ctx1 || !ctx2) return;
+
+  const labels = vitals.map(v => new Date(v.log_date).toLocaleDateString(undefined, {month:'short', day:'numeric'}));
+  
+  if (vChart1) vChart1.destroy();
+  vChart1 = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Weight (kg)', data: vitals.map(v => v.weight), borderColor: '#3b82f6', tension: 0.3, yAxisID: 'y' },
+        { label: 'BP Systolic', data: vitals.map(v => v.bp_systolic), borderColor: 'var(--danger)', tension: 0.3, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { 
+        y: { type: 'linear', display: true, position: 'left', title: {display:true, text:'Weight'} },
+        y1: { type: 'linear', display: true, position: 'right', grid:{drawOnChartArea:false}, title: {display:true, text:'BP'} }
       }
-      
-      const latest = json.data[json.data.length - 1];
-      let bmiHtml = '';
-      if (latest.weight && latest.height) {
-         const bmi = (latest.weight / ((latest.height/100) * (latest.height/100))).toFixed(1);
-         let category = 'Normal';
-         let color = 'var(--success)';
-         if (bmi < 18.5) { category = 'Underweight'; color = '#3b82f6'; }
-         else if (bmi >= 25 && bmi < 30) { category = 'Overweight'; color = '#f97316'; }
-         else if (bmi >= 30) { category = 'Obese'; color = 'var(--danger)'; }
-         
-         bmiHtml = `
-            <div style="text-align:center; padding:20px; background:#f8fafc; border-radius:15px">
-               <div style="font-size:3rem; font-weight:800; color:${color}">${bmi}</div>
-               <div style="font-weight:600; text-transform:uppercase; letter-spacing:1px">${category}</div>
-               <div style="font-size:0.8rem; color:var(--text-light); margin-top:10px">Based on latest log: ${latest.log_date}</div>
-            </div>
-         `;
-      }
-      
-      container.innerHTML = `
-         ${bmiHtml}
-         <div style="margin-top:20px">
-            <div style="display:flex; justify-content:space-between; margin-bottom:10px">
-               <span>Latest Blood Pressure:</span>
-               <strong style="color:var(--primary)">${latest.bp_systolic || '--'}/${latest.bp_diastolic || '--'} mmHg</strong>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:10px">
-               <span>Latest Blood Sugar:</span>
-               <strong style="color:var(--secondary)">${latest.sugar_level || '--'} mg/dL</strong>
-            </div>
-         </div>
-      `;
-      
-      // Update Charts
-      const labels = json.data.map(d => d.log_date);
-      const weights = json.data.map(d => d.weight);
-      const sys = json.data.map(d => d.bp_systolic);
-      const dia = json.data.map(d => d.bp_diastolic);
-      const sugar = json.data.map(d => d.sugar_level);
-      
-      if (vChart1) vChart1.destroy();
-      if (vChart2) vChart2.destroy();
-      
-      const ctx1 = document.getElementById('mainVitalsChart')?.getContext('2d');
-      if (ctx1) {
-         vChart1 = new Chart(ctx1, {
-            type: 'line',
-            data: {
-               labels: labels,
-               datasets: [
-                  { label: 'Weight (kg)', data: weights, borderColor: '#3b82f6', tension: 0.3, fill: false },
-                  { label: 'BP Systolic', data: sys, borderColor: '#ef4444', tension: 0.3, fill: false },
-                  { label: 'BP Diastolic', data: dia, borderColor: '#f97316', tension: 0.3, fill: false }
-               ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-         });
-      }
-      
-      const ctx2 = document.getElementById('sugarChart')?.getContext('2d');
-      if (ctx2) {
-         vChart2 = new Chart(ctx2, {
-            type: 'bar',
-            data: {
-               labels: labels,
-               datasets: [{ label: 'Blood Sugar (mg/dL)', data: sugar, backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: '#10b981', borderWidth: 2 }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-         });
-      }
-      
-   } catch (err) { console.error(err); }
+    }
+  });
+
+  if (vChart2) vChart2.destroy();
+  vChart2 = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ label: 'Blood Sugar (mg/dL)', data: vitals.map(v => v.sugar_level), borderColor: 'var(--success)', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+}
+
+function renderVitalsHistory(vitals) {
+  const container = document.getElementById('vitalsHistory');
+  if (!container) return;
+  if (vitals.length === 0) {
+    container.innerHTML = '<div class="empty-state">No historical logs.</div>';
+    return;
+  }
+
+  let html = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:var(--bg);text-align:left;">
+          <th style="padding:12px 16px;border-bottom:1px solid var(--border)">Date</th>
+          <th style="padding:12px 16px;border-bottom:1px solid var(--border)">Weight</th>
+          <th style="padding:12px 16px;border-bottom:1px solid var(--border)">BP</th>
+          <th style="padding:12px 16px;border-bottom:1px solid var(--border)">Sugar</th>
+          <th style="padding:12px 16px;border-bottom:1px solid var(--border)">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  [...vitals].reverse().forEach(v => {
+    html += `
+      <tr>
+        <td style="padding:12px 16px;border-bottom:1px solid var(--border)">${new Date(v.log_date).toLocaleDateString()}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid var(--border)">${v.weight || '-'} kg</td>
+        <td style="padding:12px 16px;border-bottom:1px solid var(--border)">${v.bp_systolic || '-'}/${v.bp_diastolic || '-'}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid var(--border)">${v.sugar_level || '-'} mg/dL</td>
+        <td style="padding:12px 16px;border-bottom:1px solid var(--border)">
+          <button onclick="deleteVitalsRecord(${v.id})" style="border:none;background:none;color:var(--danger);cursor:pointer;padding:4px"><i class="fas fa-trash-alt"></i></button>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function deleteVitalsRecord(id) {
+  if (!await showConfirm('Delete this vital log entry?', { confirmText: 'Delete', type: 'danger' })) return;
+  const res = await fetch('../api/patient_api.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `action=delete_vitals&id=${id}`
+  });
+  if ((await res.json()).success) {
+    showToast('Log entry removed', 'success');
+    loadHealthAnalytics();
+  }
+}
+
+const vitalsForm = document.getElementById('vitalsForm');
+if (vitalsForm) {
+  vitalsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(vitalsForm);
+    const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (json.success) {
+      showToast(json.message || 'Logged', 'success');
+      vitalsForm.reset();
+      loadHealthAnalytics();
+    } else {
+      showToast(json.message || 'Failed', 'error');
+    }
+  });
 }
 
 // Init sub-tab loads
@@ -1948,6 +2034,8 @@ async function initDashboard() {
                             `).join('');
                        }
                    }
+                   // Fetch Vitals for Snapshot
+                   loadHealthAnalytics();
                }
                if (role === 'admin') {
                    const patientN = Number(st.patients ?? 0);
@@ -2254,3 +2342,4 @@ function getLevenshteinDistance(s1, s2) {
   }
   return d[m][n];
 }
+

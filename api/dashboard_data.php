@@ -191,15 +191,19 @@ try {
             echo json_encode($response);
             exit;
 
-        case 'patient_profile':
-            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, p.age, p.gender, p.blood_group, p.disease, p.address, p.whatsapp_number, p.emergency_contact
-                                   FROM users u
-                                   JOIN patients p ON p.user_id = u.id
-                                   WHERE p.id = ?
-                                   LIMIT 1");
-            $stmt->execute([$profileId]);
             $response['data'] = $stmt->fetch() ?: [];
+            echo json_encode($response);
+            exit;
+
+        case 'patient_vitals':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->prepare("SELECT id, weight, height, bp_systolic, bp_diastolic, sugar_level, log_date 
+                                   FROM patient_vitals 
+                                   WHERE patient_id = ? 
+                                   ORDER BY log_date DESC, id DESC 
+                                   LIMIT 30");
+            $stmt->execute([$profileId]);
+            $response['data'] = array_reverse($stmt->fetchAll());
             echo json_encode($response);
             exit;
 
