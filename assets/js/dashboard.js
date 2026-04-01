@@ -214,6 +214,11 @@ function toggleTheme() {
   localStorage.setItem('medalert_theme', target);
   const icon = document.querySelector('#themeToggle i');
   if (icon) icon.className = target === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+  
+  // Re-run health analytics if tab is active to update chart colors
+  if (document.getElementById('tab-analytics')?.classList.contains('active')) {
+      loadHealthAnalytics();
+  }
 }
 
 function initTheme() {
@@ -1619,27 +1624,78 @@ async function loadDoctorSchedule() {
 
   // Add Header Row for Clarity
   const headerHtml = `
-    <div style="display:grid;grid-template-columns:130px 100px 1fr 1fr 1fr;gap:10px;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
+    <div style="display:grid;grid-template-columns:130px 100px 1fr 1fr;gap:10px;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
       <div>Day</div>
       <div>Availability</div>
       <div>Start Time</div>
       <div>End Time</div>
-      <div>Slot (Mins)</div>
     </div>
   `;
 
   wrapper.innerHTML = headerHtml + days.map(day => {
     const row = map[day] || { is_available: 0, start_time: '09:00:00', end_time: '17:00:00', slot_duration: 30 };
+    const isOpen = parseInt(row.is_available, 10) === 1;
     return `
-      <div style="display:grid;grid-template-columns:130px 100px 1fr 1fr 1fr;gap:10px;align-items:center;margin-bottom:10px;">
+      <div id="row-${day}" class="schedule-row ${isOpen ? '' : 'inactive'}" style="display:grid;grid-template-columns:130px 100px 1fr 1fr;gap:10px;align-items:center;margin-bottom:10px;padding:8px;border-radius:12px;transition:0.3s;">
         <strong style="text-transform:capitalize;font-size:14px;color:var(--text);">${day}</strong>
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" name="${day}_available" ${parseInt(row.is_available, 10) ? 'checked' : ''}> Open</label>
-        <input type="time" name="${day}_start" value="${(row.start_time || '09:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;">
-        <input type="time" name="${day}_end" value="${(row.end_time || '17:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;">
-        <input type="number" min="5" step="5" name="${day}_slot" value="${row.slot_duration || 30}" placeholder="Mins" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;">
+        <label class="switch" title="Toggle Availability">
+          <input type="checkbox" name="${day}_available" ${isOpen ? 'checked' : ''} onchange="toggleScheduleRow('${day}')">
+          <span class="slider"></span>
+        </label>
+        <input type="time" name="${day}_start" value="${(row.start_time || '09:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;" onchange="validateScheduleRow('${day}')">
+        <input type="time" name="${day}_end" value="${(row.end_time || '17:00:00').slice(0,5)}" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;width:100%;" onchange="validateScheduleRow('${day}')">
       </div>
     `;
   }).join('');
+}
+
+function toggleScheduleRow(day) {
+  const row = document.getElementById(`row-${day}`);
+  const sitsOn = row.querySelector(`[name="${day}_available"]`).checked;
+  if (sitsOn) row.classList.remove('inactive');
+  else row.classList.add('inactive');
+}
+
+function validateScheduleRow(day) {
+  const startEl = document.querySelector(`[name="${day}_start"]`);
+  const endEl = document.querySelector(`[name="${day}_end"]`);
+  if (!startEl || !endEl) return true;
+
+  const startValue = startEl.value;
+  const endValue = endEl.value;
+  
+  if (startValue && endValue && startValue >= endValue) {
+    startEl.classList.add('input-error');
+    endEl.classList.add('input-error');
+    return false;
+  } else {
+    startEl.classList.remove('input-error');
+    endEl.classList.remove('input-error');
+    return true;
+  }
+}
+
+function copyMondayToAll() {
+  const mondayStart = document.querySelector('[name="monday_start"]')?.value;
+  const mondayEnd = document.querySelector('[name="monday_end"]')?.value;
+  
+  if (!mondayStart || !mondayEnd) {
+    showToast('Please set Monday hours first', 'warning');
+    return;
+  }
+
+  const days = ['tuesday','wednesday','thursday','friday','saturday','sunday'];
+  days.forEach(day => {
+    const available = document.querySelector(`[name="${day}_available"]`);
+    if (available && available.checked) {
+       const start = document.querySelector(`[name="${day}_start"]`);
+       const end = document.querySelector(`[name="${day}_end"]`);
+       if (start) start.value = mondayStart;
+       if (end) end.value = mondayEnd;
+       validateScheduleRow(day);
+    }
+  });
+  showToast('Applied Monday hours to all open days', 'success');
 }
 
 async function loadDoctorPatients() {
@@ -1975,23 +2031,48 @@ function renderVitalsCharts(vitals) {
   const ctx2 = document.getElementById('sugarChart')?.getContext('2d');
   if (!ctx1 || !ctx2) return;
 
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const textColor = isDark ? '#cbd5e1' : '#475569';
+  const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+
   const labels = vitals.map(v => new Date(v.log_date).toLocaleDateString(undefined, {month:'short', day:'numeric'}));
   
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: { color: textColor, font: { family: 'Figtree', weight: '600' } }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: gridColor },
+        ticks: { color: textColor }
+      },
+      y: {
+        grid: { color: gridColor },
+        ticks: { color: textColor }
+      }
+    }
+  };
+
   if (vChart1) vChart1.destroy();
   vChart1 = new Chart(ctx1, {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: 'Weight (kg)', data: vitals.map(v => v.weight), borderColor: '#3b82f6', tension: 0.3, yAxisID: 'y' },
-        { label: 'BP Systolic', data: vitals.map(v => v.bp_systolic), borderColor: 'var(--danger)', tension: 0.3, yAxisID: 'y1' }
+        { label: 'Weight (kg)', data: vitals.map(v => v.weight), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.3, yAxisID: 'y' },
+        { label: 'BP Systolic', data: vitals.map(v => v.bp_systolic), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.3, yAxisID: 'y1' }
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      ...commonOptions,
       scales: { 
-        y: { type: 'linear', display: true, position: 'left', title: {display:true, text:'Weight'} },
-        y1: { type: 'linear', display: true, position: 'right', grid:{drawOnChartArea:false}, title: {display:true, text:'BP'} }
+        x: commonOptions.scales.x,
+        y: { ...commonOptions.scales.y, type: 'linear', display: true, position: 'left', title: {display:true, text:'Weight', color: textColor} },
+        y1: { type: 'linear', display: true, position: 'right', grid:{drawOnChartArea:false}, title: {display:true, text:'BP', color: textColor}, ticks: {color: textColor} }
       }
     }
   });
@@ -2001,9 +2082,9 @@ function renderVitalsCharts(vitals) {
     type: 'line',
     data: {
       labels,
-      datasets: [{ label: 'Blood Sugar (mg/dL)', data: vitals.map(v => v.sugar_level), borderColor: 'var(--success)', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3 }]
+      datasets: [{ label: 'Blood Sugar (mg/dL)', data: vitals.map(v => v.sugar_level), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3 }]
     },
-    options: { responsive: true, maintainAspectRatio: false }
+    options: commonOptions
   });
 }
 
@@ -2313,22 +2394,31 @@ const doctorScheduleForm = document.getElementById('doctorScheduleForm');
 if (doctorScheduleForm) {
   doctorScheduleForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-    const schedule = days.map((day) => ({
-      day,
-      available: doctorScheduleForm.querySelector(`[name="${day}_available"]`)?.checked ? 1 : 0,
-      start: doctorScheduleForm.querySelector(`[name="${day}_start"]`)?.value || '09:00',
-      end: doctorScheduleForm.querySelector(`[name="${day}_end"]`)?.value || '17:00',
-      slot: parseInt(doctorScheduleForm.querySelector(`[name="${day}_slot"]`)?.value || '30', 10)
-    }));
-    const body = new URLSearchParams({ action: 'save_schedule', schedule: JSON.stringify(schedule) }).toString();
-    const res = await fetch('../api/doctor_api.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body
-    });
-    const json = await res.json();
-    showToast(json.message || (json.success ? 'Schedule saved' : 'Save failed'), json.success ? 'success' : 'error');
+    try {
+      const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+      const schedule = days.map((day) => {
+        if (!validateScheduleRow(day) && doctorScheduleForm.querySelector(`[name="${day}_available"]`).checked) {
+            throw new Error(`Invalid time range on ${day}`);
+        }
+        return {
+          day,
+          available: doctorScheduleForm.querySelector(`[name="${day}_available"]`)?.checked ? 1 : 0,
+          start: doctorScheduleForm.querySelector(`[name="${day}_start"]`)?.value || '09:00',
+          end: doctorScheduleForm.querySelector(`[name="${day}_end"]`)?.value || '17:00',
+          slot: 30 // Removed from UI, defaulting to 30 mins
+        };
+      });
+      const body = new URLSearchParams({ action: 'save_schedule', schedule: JSON.stringify(schedule) }).toString();
+      const res = await fetch('../api/doctor_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      const json = await res.json();
+      showToast(json.message || (json.success ? 'Schedule saved' : 'Save failed'), json.success ? 'success' : 'error');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   });
 }
 

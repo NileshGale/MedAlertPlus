@@ -147,6 +147,17 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 [data-theme="dark"] {
   --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --text-light: #cbd5e1; --border: #334155;
 }
+/* Dark Mode Icon Fixes */
+[data-theme="dark"] .theme-btn i,
+[data-theme="dark"] .notif-btn i,
+[data-theme="dark"] .btn:not(.btn-primary) i,
+[data-theme="dark"] i.fa-location-dot,
+[data-theme="dark"] i.fa-plus,
+[data-theme="dark"] .btn:not(.btn-primary) {
+  color: var(--text) !important;
+}
+[data-theme="dark"] .quick-btn { background: rgba(30,64,175,0.2) !important; color: #93c5fd !important; border-color: #1e40af !important; }
+[data-theme="dark"] .quick-btn i { color: #93c5fd !important; }
 .sos-btn { background: var(--danger); color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 800; cursor: pointer; animation: pulse 2s infinite; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 .theme-btn { background: var(--bg); border: 1px solid var(--border); width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
