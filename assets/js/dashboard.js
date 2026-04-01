@@ -514,38 +514,71 @@ async function loadPatientAppointments() {
     container.innerHTML = filtered.map(a => {
       const propTime = a.proposed_appointment_time ? formatApptTimeDisplay(a.proposed_appointment_time) : '';
       const proposeBlock = a.proposed_appointment_date ? `
-        <div style="margin-top:10px;padding:10px;background:#fffbeb;border-radius:8px;border:1px solid #fcd34d;font-size:13px;">
-          <strong style="color:#92400e">Doctor proposed a new time:</strong> ${a.proposed_appointment_date} ${propTime || a.proposed_appointment_time}
+        <div style="margin-top:12px;padding:12px;background:#fffbeb;border-radius:12px;border:1px solid #fcd34d;font-size:13px;">
+          <strong style="color:#92400e"><i class="fas fa-exclamation-circle"></i> New time proposed:</strong> 
+          <div style="margin-top:4px;">${a.proposed_appointment_date} @ ${propTime || a.proposed_appointment_time}</div>
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary" onclick="patientRespondReschedule(${a.id},'accept')">Accept</button>
-            <button type="button" class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="patientRespondReschedule(${a.id},'reject')">Reject</button>
+            <button type="button" class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="patientRespondReschedule(${a.id},'accept')">Accept</button>
+            <button type="button" class="btn" style="padding:6px 12px;font-size:12px;background:rgba(239,68,68,0.1);color:var(--danger);" onclick="patientRespondReschedule(${a.id},'reject')">Reject</button>
           </div>
         </div>` : '';
+      
       return `
-      <div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+      <div class="appointment-card ${a.status}">
+        <div class="appt-header">
           <div>
-            <div style="font-weight:700;">Dr. ${a.doctor_name}</div>
-            <div style="font-size:12px;color:var(--muted);">${a.specialization || ''} · ${a.clinic_name || 'Clinic'}</div>
+            <div class="appt-name">Dr. ${a.doctor_name}</div>
+            <div class="appt-subtext">
+              <span>${a.specialization || 'Specialist'}</span>
+              <span>·</span>
+              <span>${a.clinic_name || 'Clinic'}</span>
+            </div>
           </div>
-          <span class="badge ${(a.status === 'confirmed' || a.status === 'completed') ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
+          <span class="badge ${a.status === 'confirmed' || a.status === 'completed' ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
         </div>
-        <div style="margin-top:10px;font-size:13px;color:var(--text-light);">
-          <i class="fas fa-calendar"></i> ${a.appointment_date} ${a.appointment_time} · ${a.type}
+
+        <div class="appt-body">
+          <div class="appt-info-row">
+            <i class="fas fa-calendar-alt"></i>
+            <span>${a.appointment_date} at ${formatApptTimeDisplay(a.appointment_time)}</span>
+          </div>
+          <div class="appt-info-row">
+            <i class="fas fa-video"></i>
+            <span>${a.type.toUpperCase()} Consultation</span>
+          </div>
+          
+          ${proposeBlock}
+          
+          ${a.meet_link ? `
+            <div class="appt-info-row" style="margin-top:8px;">
+              <i class="fas fa-link"></i>
+              <a href="${a.meet_link}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Join Meeting</a>
+            </div>
+          ` : ''}
+
+          ${a.patient_notes ? `
+            <div class="appt-notes-box">
+              <strong><i class="fas fa-pen-nib"></i> My Notes:</strong> ${a.patient_notes}
+            </div>
+          ` : ''}
+          
+          ${a.doctor_notes ? `
+            <div class="appt-notes-box" style="background:#f0fdf4;border-color:#dcfce7;color:#166534;">
+              <strong><i class="fas fa-clipboard-check"></i> Doctor's Notes:</strong> ${a.doctor_notes}
+            </div>
+          ` : ''}
         </div>
-        ${proposeBlock}
-        ${a.meet_link ? `<div style="margin-top:8px;font-size:13px;"><a href="${a.meet_link}" target="_blank" rel="noopener">Join Meet Link</a></div>` : ''}
-        ${a.doctor_notes ? `<div style="margin-top:8px;font-size:13px;"><strong>Doctor Notes:</strong> ${a.doctor_notes}</div>` : ''}
-        ${a.prescription ? `<div style="margin-top:6px;font-size:13px;"><strong>Prescription:</strong> ${a.prescription}</div>` : ''}
-        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="cancelPatientAppointment(${a.id})">Cancel</button>` : ''}
-          ${(a.status === 'pending') ? `<button class="btn" style="background:#fff7ed;color:#92400e;border:1px solid #fcd34d;" onclick="openUpdateAppointmentModal(${a.id})">Update</button>` : ''}
-          <button class="btn" style="background:#f8fafc;color:#1f2937;" onclick="toggleAppointmentDetails(${a.id})">Details</button>
+
+        <div class="appt-footer">
+          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="cancelPatientAppointment(${a.id})"><i class="fas fa-times"></i> Cancel</button>` : ''}
+          ${(a.status === 'pending') ? `<button class="btn btn-update" onclick="openUpdateAppointmentModal(${a.id})"><i class="fas fa-edit"></i> Update Details</button>` : ''}
+          <button class="btn" style="background:#f8fafc;color:#1f2937;border:1px solid #e2e8f0;" onclick="toggleAppointmentDetails(${a.id})"><i class="fas fa-info-circle"></i> View Details</button>
         </div>
-        <div id="patient-appointment-details-${a.id}" style="display:none;margin-top:10px;padding:10px;border:1px dashed var(--border);border-radius:8px;background:#f8fafc;">
-          <div style="font-size:13px;"><strong>Clinic:</strong> ${a.clinic_name || '-'}</div>
-          <div style="font-size:13px;"><strong>Type:</strong> ${a.type}</div>
-          <div style="font-size:13px;"><strong>Status:</strong> ${a.status}</div>
+
+        <div id="patient-appointment-details-${a.id}" style="display:none;margin-top:15px;padding:15px;border-top:1px solid #f1f5f9;font-size:13px;color:#64748b;line-height:1.6;">
+          <div><i class="fas fa-hospital"></i> <strong>Clinic:</strong> ${a.clinic_name || '-'}</div>
+          <div><i class="fas fa-notes-medical"></i> <strong>Treatment Type:</strong> ${a.type}</div>
+          ${a.prescription ? `<div style="margin-top:8px;padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;color:#1e293b;"><strong>Prescription:</strong><br>${a.prescription}</div>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -1414,28 +1447,55 @@ async function loadDoctorAppointments() {
       const timeShort = formatApptTimeDisplay(a.appointment_time);
       const propTime = a.proposed_appointment_time ? formatApptTimeDisplay(a.proposed_appointment_time) : '';
       return `
-      <div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;gap:10px;">
+      <div class="appointment-card ${a.status}">
+        <div class="appt-header">
           <div>
-            <div style="font-weight:700;">${a.patient_name}</div>
-            <div style="font-size:12px;color:var(--muted);">${a.patient_phone || 'No phone'} · ${a.type}</div>
+            <div class="appt-name">${a.patient_name}</div>
+            <div class="appt-subtext">
+              <span><i class="fas fa-phone-alt"></i> ${a.patient_phone || 'No phone'}</span>
+              <span>·</span>
+              <span>${a.type.toUpperCase()}</span>
+            </div>
           </div>
-          <span class="badge ${(a.status === 'confirmed' || a.status === 'completed') ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
+          <span class="badge ${a.status === 'confirmed' || a.status === 'completed' ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
         </div>
-        <div style="margin-top:8px;font-size:13px;color:var(--text-light);">
-          <i class="fas fa-calendar"></i> ${a.appointment_date} ${a.appointment_time}
+
+        <div class="appt-body">
+          <div class="appt-info-row">
+            <i class="fas fa-calendar-day"></i>
+            <span>${a.appointment_date} at ${timeShort}</span>
+          </div>
+
+          ${a.proposed_appointment_date ? `
+            <div style="margin-top:10px;padding:10px;background:#fffbeb;border-radius:10px;border:1px solid #fcd34d;font-size:12px;color:#92400e;">
+              <i class="fas fa-hourglass-half"></i> <strong>Awaiting approval:</strong> ${a.proposed_appointment_date} @ ${propTime || a.proposed_appointment_time}
+            </div>
+          ` : ''}
+
+          ${a.status !== 'cancelled' && a.meet_link ? `
+            <div class="appt-info-row" style="margin-top:8px;">
+              <i class="fas fa-video"></i>
+              <a href="${a.meet_link}" target="_blank" rel="noopener" style="color:var(--primary);">${a.meet_link}</a>
+            </div>
+          ` : ''}
+
+          ${a.patient_notes ? `
+            <div class="appt-notes-box">
+              <strong><i class="fas fa-comment-medical"></i> Patient Notes:</strong> ${a.patient_notes}
+            </div>
+          ` : ''}
         </div>
-        ${a.proposed_appointment_date ? `<div style="margin-top:6px;font-size:12px;color:#b45309;font-weight:600;"><i class="fas fa-hourglass-half"></i> Awaiting patient approval: ${a.proposed_appointment_date} ${propTime || a.proposed_appointment_time}</div>` : ''}
-        ${a.status !== 'cancelled' && a.meet_link ? `<div style="margin-top:6px;font-size:13px;"><strong>Meet:</strong> <a href="${a.meet_link}" target="_blank" rel="noopener">${a.meet_link}</a></div>` : ''}
-        ${a.patient_notes ? `<div style="margin-top:6px;font-size:13px;color:var(--muted);"><strong>Patient notes:</strong> ${a.patient_notes}</div>` : ''}
-        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">
-          ${a.status === 'cancelled' ? `<button type="button" class="btn" style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;" onclick="doctorDeleteCancelledAppointment(${a.id})"><i class="fas fa-trash-alt"></i> Delete appointment</button>` : `
-          ${a.status === 'pending' ? `<button class="btn btn-primary" onclick="doctorUpdateAppointmentStatus(${a.id}, 'confirm_appointment')"><i class="fas fa-check"></i> Confirm</button>` : ''}
-          ${a.status === 'confirmed' ? `<button class="btn" style="background:#ecfdf5;color:#166534;" onclick="doctorUpdateAppointmentStatus(${a.id}, 'complete_appointment')"><i class="fas fa-flag-checkered"></i> Complete</button>` : ''}
-          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.08);color:var(--danger);" onclick="doctorUpdateAppointmentStatus(${a.id}, 'cancel_appointment')"><i class="fas fa-times"></i> Cancel</button>` : ''}
-          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button type="button" class="btn" style="background:#fef3c7;color:#b45309;border:1px solid #fcd34d;" onclick="openRescheduleModal(${a.id}, '${a.appointment_date}', '${timeShort}')"><i class="fas fa-calendar-alt"></i> Update</button>` : ''}
-          <button class="btn" style="background:#dbeafe;color:#1e40af;" onclick="manageMeetLink(${a.id}, ${a.meet_link ? `'${encodeURIComponent(a.meet_link)}'` : 'null'})"><i class="fas fa-video"></i> Meet link</button>
-          <button class="btn" style="background:#f9fafb;color:#111827;" onclick="manageAppointment(${a.id})"><i class="fas fa-notes-medical"></i> Notes</button>
+
+        <div class="appt-footer">
+          ${a.status === 'cancelled' ? `
+            <button type="button" class="btn" style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;" onclick="doctorDeleteCancelledAppointment(${a.id})"><i class="fas fa-trash-alt"></i> Delete</button>
+          ` : `
+            ${a.status === 'pending' ? `<button class="btn btn-primary" onclick="doctorUpdateAppointmentStatus(${a.id}, 'confirm_appointment')"><i class="fas fa-check"></i> Confirm</button>` : ''}
+            ${a.status === 'confirmed' ? `<button class="btn" style="background:#ecfdf5;color:#166534;border:1px solid #bbf7d0;" onclick="doctorUpdateAppointmentStatus(${a.id}, 'complete_appointment')"><i class="fas fa-flag-checkered"></i> Complete</button>` : ''}
+            ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.08);color:var(--danger);" onclick="doctorUpdateAppointmentStatus(${a.id}, 'cancel_appointment')"><i class="fas fa-times"></i> Cancel</button>` : ''}
+            ${(a.status === 'pending' || a.status === 'confirmed') ? `<button type="button" class="btn btn-update" onclick="openRescheduleModal(${a.id}, '${a.appointment_date}', '${timeShort}')"><i class="fas fa-calendar-alt"></i> Reschedule</button>` : ''}
+            <button class="btn" style="background:#f0f7ff;color:#1e40af;border:1px solid #dbeafe;" onclick="manageMeetLink(${a.id}, ${a.meet_link ? `'${encodeURIComponent(a.meet_link)}'` : 'null'})"><i class="fas fa-link"></i> Link</button>
+            <button class="btn" style="background:#f8fafc;color:#1e293b;border:1px solid #e2e8f0;" onclick="manageAppointment(${a.id})"><i class="fas fa-file-medical"></i> Record</button>
           `}
         </div>
       </div>`;

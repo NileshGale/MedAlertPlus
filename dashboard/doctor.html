@@ -69,6 +69,14 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
   cursor: pointer; color: var(--text); transition: 0.2s;
 }
 .theme-btn:hover { background: var(--border); }
+
+/* ── Dark Mode ── */
+[data-theme="dark"] {
+  --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --text-light: #cbd5e1; --border: #334155; --muted: #94a3b8;
+}
+[data-theme="dark"] .stat-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea { background: #1e293b; color: #f1f5f9; border-color: #334155; }
+
 </style>
 </head>
 <body>

@@ -111,6 +111,15 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 }
 .theme-btn:hover { background: var(--border); }
 
+/* ── Dark Mode ── */
+[data-theme="dark"] {
+  --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --text-light: #cbd5e1; --border: #334155; --muted: #94a3b8;
+}
+[data-theme="dark"] .stat-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+[data-theme="dark"] tr:hover { background: rgba(255,255,255,0.03); }
+[data-theme="dark"] select { background: var(--bg); color: var(--text); }
+
+
 /* ── Tabs ── */
 .tab-pane { display: none; }
 .tab-pane.active { display: block; animation: fadeInTab 0.3s ease; }
