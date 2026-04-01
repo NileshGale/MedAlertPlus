@@ -260,7 +260,7 @@ try {
 
         case 'doctor_appointments':
             if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT a.*, u.name AS patient_name, u.phone AS patient_phone
+            $stmt = $pdo->prepare("SELECT a.*, u.name AS patient_name, u.phone AS patient_phone, p.gender, p.age, p.blood_group
                                    FROM appointments a
                                    JOIN patients p ON a.patient_id = p.id
                                    JOIN users u ON p.user_id = u.id
@@ -293,6 +293,27 @@ try {
                                    GROUP BY p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group
                                    ORDER BY last_appointment DESC");
             $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'doctor_patient_reports':
+            if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $patientId = intval($_GET['patient_id'] ?? 0);
+            if (!$patientId) { echo json_encode(['success'=>false, 'message'=>'Invalid patient ID']); exit; }
+            
+            // Security: Check if doctor has an appointment relationship with this patient
+            $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id=? AND patient_id=? LIMIT 1");
+            $check->execute([$profileId, $patientId]);
+            if (!$check->fetch()) {
+                echo json_encode(['success'=>false, 'message'=>'Access denied: No appointment history with this patient.']);
+                exit;
+            }
+
+            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, uploaded_at 
+                                   FROM patient_reports WHERE patient_id = ? 
+                                   ORDER BY uploaded_at DESC");
+            $stmt->execute([$patientId]);
             $response['data'] = $stmt->fetchAll();
             echo json_encode($response);
             exit;

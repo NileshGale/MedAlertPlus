@@ -1618,6 +1618,9 @@ async function loadDoctorAppointments() {
               <span>·</span>
               <span style="font-weight:700;color:var(--text-light);">${a.type.toUpperCase()}</span>
             </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+              <i class="fas fa-user-circle"></i> ${a.age ? a.age + ' yrs' : '-'} · ${a.gender || '-'} · Blood: ${a.blood_group || '-'}
+            </div>
             
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
               <div class="dr-appt-info-row">
@@ -1765,16 +1768,80 @@ async function loadDoctorPatients() {
   if (!container) return;
   const res = await fetch('../api/dashboard_data.php?type=doctor_patients');
   const json = await res.json();
+  console.log('Doctor Patients Data:', json.data);
   if (!json.success || !json.data || json.data.length === 0) {
     container.innerHTML = '<div class="empty-state">No patients found yet.</div>';
     return;
   }
   container.innerHTML = json.data.map(p => `
-    <div style="padding:12px 0;border-bottom:1px solid var(--border);">
-      <div style="font-weight:700;">${p.name}</div>
-      <div style="font-size:12px;color:var(--muted);">${p.email} · ${p.phone || '-'} · Last visit: ${p.last_appointment || '-'}</div>
+    <div style="padding:12px; border:1px solid var(--border); border-radius:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:700; color:var(--text);">${p.name}</div>
+        <div style="font-size:12px; color:var(--muted);">${p.email} · ${p.phone || '-'}</div>
+        <div style="font-size:11px; color:var(--primary); font-weight:700; margin-top:4px;">
+          PATIENT ID: #${p.id}
+        </div>
+        <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+          <i class="fas fa-user-circle"></i> Profile: ${p.age ? p.age + ' yrs' : '-'} · ${p.gender || '-'} · Blood: ${p.blood_group || '-'}
+        </div>
+      </div>
+      <div>
+        <button class="btn btn-primary" style="font-size:12px; display:flex; align-items:center; gap:8px;" onclick="viewPatientReportsByDoctor(${p.id}, '${p.name.replace(/'/g, "\\'")}', '${p.age || '-'}', '${p.gender || '-'}', '${p.blood_group || '-'}')">
+          <i class="fas fa-file-medical"></i> Medical Report
+        </button>
+      </div>
     </div>
   `).join('');
+}
+
+async function viewPatientReportsByDoctor(patientId, patientName, age, gender, blood) {
+  const modal = document.getElementById('doctorPatientReportsModal');
+  const title = document.getElementById('reportsModalTitle');
+  const subtitle = document.getElementById('reportsModalSubtitle');
+  const content = document.getElementById('reportsModalContent');
+  if (!modal || !content) return;
+
+  title.textContent = patientName;
+  if (subtitle) subtitle.innerHTML = `<i class="fas fa-id-card"></i> ${age} yrs · ${gender} · Blood Group: ${blood}`;
+  content.innerHTML = '<div class="empty-state">Loading reports...</div>';
+  modal.style.display = 'flex';
+
+  try {
+    const res = await fetch(`../api/dashboard_data.php?type=doctor_patient_reports&patient_id=${patientId}`);
+    const json = await res.json();
+    if (json.success && json.data && json.data.length > 0) {
+      content.innerHTML = `
+        <div class="reports-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:15px; padding:5px;">
+          ${json.data.map(r => {
+            let icon = 'fa-file-alt';
+            let color = '#64748b';
+            if (r.file_type === 'pdf') { icon = 'fa-file-pdf'; color = '#ef4444'; }
+            else if (['jpg', 'jpeg', 'png'].includes(r.file_type)) { icon = 'fa-file-image'; color = '#3b82f6'; }
+            else if (['doc', 'docx'].includes(r.file_type)) { icon = 'fa-file-word'; color = '#2563eb'; }
+
+            return `
+              <div style="border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--bg); text-align:center;">
+                <div style="font-size:24px; color:${color}; margin-bottom:8px;"><i class="fas ${icon}"></i></div>
+                <div style="font-size:11px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.file_name}">${r.file_name}</div>
+                <div style="font-size:10px; color:var(--muted); margin:4px 0 10px;">${new Date(r.uploaded_at).toLocaleDateString()}</div>
+                <a href="../uploads/${r.file_path}" target="_blank" class="btn" style="width:100%; padding:4px; font-size:11px; background:var(--card); border:1px solid var(--border); display:inline-block; text-decoration:none; color:var(--primary);">View</a>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else {
+      content.innerHTML = `
+        <div class="empty-state" style="text-align:center; padding:30px;">
+          <i class="fas fa-folder-open" style="font-size:40px; color:var(--muted); opacity:0.3; margin-bottom:15px; display:block;"></i>
+          <p style="color:var(--muted);">${json.message || 'No reports uploaded for this patient.'}</p>
+        </div>
+      `;
+    }
+  } catch (err) {
+    content.innerHTML = '<div class="empty-state">Error loading records.</div>';
+    console.error(err);
+  }
 }
 
 async function loadDoctorProfile() {

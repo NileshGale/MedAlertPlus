@@ -370,8 +370,26 @@ input:checked + .slider:before { transform: translateX(20px); }
     </div>
   </div>
 </div>
+<!-- Doctor's Patient Reports Modal -->
+<div id="doctorPatientReportsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:10000; align-items:center; justify-content:center; padding:20px;">
+   <div style="background:var(--card); width:100%; max-width:600px; border-radius:16px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,0.2);">
+      <div style="padding:20px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:between;">
+         <div>
+            <h3 style="font-size:18px; font-weight:700; color:var(--text); margin-bottom:4px;" id="reportsModalTitle">Patient Reports</h3>
+            <p id="reportsModalSubtitle" style="font-size:12px; color:var(--muted); margin:0;">Medical history archive</p>
+         </div>
+         <button onclick="document.getElementById('doctorPatientReportsModal').style.display='none'" style="margin-left:auto; background:none; border:none; font-size:24px; padding:10px; cursor:pointer; color:var(--muted);"><i class="fas fa-times"></i></button>
+      </div>
+      <div style="padding:24px; max-height:60vh; overflow-y:auto;" id="reportsModalContent">
+         <!-- AJAX Content -->
+      </div>
+      <div style="padding:16px 24px; background:var(--bg); border-top:1px solid var(--border); text-align:right;">
+         <button class="btn" style="background:#f1f5f9; color:#475569;" onclick="document.getElementById('doctorPatientReportsModal').style.display='none'">Close</button>
+      </div>
+   </div>
 </div>
+
 <div id="toastContainer"></div>
-<script src="../assets/js/dashboard.js"></script>
+<script src="../assets/js/dashboard.js?v=1.1"></script>
 </body>
 </html>
