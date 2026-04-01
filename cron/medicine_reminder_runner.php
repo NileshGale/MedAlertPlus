@@ -20,7 +20,7 @@ function executeMedicineReminderDispatch(
 
     $today = date('Y-m-d');
     $sql = '
-        SELECT r.*, u.email, u.name AS patient_name, u.phone
+        SELECT r.*, u.email, u.name AS patient_name, u.phone, r.instructions, r.color_tag
         FROM medicine_reminders r
         JOIN patients p ON r.patient_id = p.id
         JOIN users u ON p.user_id = u.id
@@ -74,7 +74,9 @@ function executeMedicineReminderDispatch(
                             $rem['medicine_name'],
                             $rem['dosage'],
                             $freqLabel,
-                            $timesHtml
+                            $timesHtml,
+                            $rem['instructions'] ?? null,
+                            $rem['color_tag'] ?? null
                         )) {
                             $pdo->prepare('UPDATE medicine_reminders SET last_email_digest_date = ? WHERE id = ?')->execute([$today, $rem['id']]);
                             if ($verbose) {
@@ -107,7 +109,7 @@ function executeMedicineReminderDispatch(
 
             $usePerSlotEmail = !empty($rem['send_email']) && !empty($rem['email']) && $emailDailyRaw === null;
             if ($usePerSlotEmail) {
-                if (!sendMedicineReminder($rem['email'], $rem['patient_name'], $rem['medicine_name'], $rem['dosage'], $timePretty)) {
+                if (!sendMedicineReminder($rem['email'], $rem['patient_name'], $rem['medicine_name'], $rem['dosage'], $timePretty, $rem['instructions'] ?? null, $rem['color_tag'] ?? null)) {
                     $status = 'failed';
                 }
                 if ($verbose) {

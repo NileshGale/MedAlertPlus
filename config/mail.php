@@ -98,7 +98,7 @@ function sendSOSAlert($toEmail, $patientName, $lat, $lng) {
         return false;
     }
 }
-function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage, $scheduledTimeLabel = null) {
+function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage, $scheduledTimeLabel = null, $instructions = null, $colorHex = '#3b82f6') {
     if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) return false;
 
     $mail = new PHPMailer(true);
@@ -116,18 +116,27 @@ function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage, $s
 
         $mail->isHTML(true);
         $mail->Subject = "Medicine Reminder: {$medicineName}";
+        
         $timeHtml = $scheduledTimeLabel
             ? "<p style='margin: 5px 0; font-size: 16px;'><strong>Scheduled time:</strong> " . htmlspecialchars($scheduledTimeLabel) . "</p>"
             : '';
+            
+        $instrHtml = $instructions 
+            ? "<p style='margin: 8px 0; font-size: 14px; background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #dee2e6; color: #495057;'><strong>Instruction:</strong> " . htmlspecialchars($instructions) . "</p>" 
+            : '';
+
+        $borderCol = !empty($colorHex) ? $colorHex : '#3b82f6';
+        
         $mail->Body    = "
-        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #3b82f6; border-radius: 12px;'>
+        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid {$borderCol}; border-radius: 12px; border-left: 8px solid {$borderCol};'>
             <h2 style='color: #1e40af; text-align: center;'>Medication Reminder</h2>
-            <p>Hello <strong>{$patientName}</strong>,</p>
+            <p>Hello <strong>" . htmlspecialchars($patientName) . "</strong>,</p>
             <p>This is a friendly reminder to take your medication as scheduled.</p>
-            <div style='background: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #bfdbfe;'>
-                <p style='margin: 0; font-size: 18px; color: #1e40af;'><strong>Medicine:</strong> {$medicineName}</p>
-                <p style='margin: 5px 0; font-size: 16px;'><strong>Dosage:</strong> {$dosage}</p>
+            <div style='background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;'>
+                <p style='margin: 0; font-size: 18px; color: #1e40af;'><strong>Medicine:</strong> " . htmlspecialchars($medicineName) . "</p>
+                <p style='margin: 5px 0; font-size: 16px;'><strong>Dosage:</strong> " . htmlspecialchars($dosage) . "</p>
                 {$timeHtml}
+                {$instrHtml}
             </div>
             <p>Please ensure you take the correct dose. If you have already taken it, you can ignore this reminder.</p>
             <hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;' />
@@ -143,7 +152,7 @@ function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage, $s
 }
 
 /** One email per day at the patient's chosen clock time; lists all dose times. */
-function sendMedicineDailyDigestEmail(string $toEmail, string $patientName, string $medicineName, string $dosage, string $frequencyLabel, string $timesHumanHtml): bool
+function sendMedicineDailyDigestEmail(string $toEmail, string $patientName, string $medicineName, string $dosage, string $frequencyLabel, string $timesHumanHtml, $instructions = null, $colorHex = '#3b82f6'): bool
 {
     if (!class_exists(PHPMailer::class)) {
         return false;
@@ -166,18 +175,25 @@ function sendMedicineDailyDigestEmail(string $toEmail, string $patientName, stri
         $safeMed = htmlspecialchars($medicineName, ENT_QUOTES, 'UTF-8');
         $safeDose = htmlspecialchars($dosage, ENT_QUOTES, 'UTF-8');
         $safeFreq = htmlspecialchars($frequencyLabel, ENT_QUOTES, 'UTF-8');
+        
+        $instrHtml = $instructions 
+            ? "<p style='margin: 8px 0; font-size: 14px; background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #dee2e6; color: #495057;'><strong>Instruction:</strong> " . htmlspecialchars($instructions) . "</p>" 
+            : '';
+
+        $borderCol = !empty($colorHex) ? $colorHex : '#3b82f6';
 
         $mail->isHTML(true);
         $mail->Subject = "Daily plan: {$medicineName}";
         $mail->Body = "
-        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #3b82f6; border-radius: 12px;'>
+        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid {$borderCol}; border-radius: 12px; border-left: 8px solid {$borderCol};'>
             <h2 style='color: #1e40af; text-align: center;'>Today's medication schedule</h2>
             <p>Hello <strong>{$safeName}</strong>,</p>
             <p>Your daily email summary — sent only at or after the time you set, not before.</p>
-            <div style='background: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #bfdbfe;'>
+            <div style='background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;'>
                 <p style='margin: 0; font-size: 18px; color: #1e40af;'><strong>Medicine:</strong> {$safeMed}</p>
                 <p style='margin: 8px 0; font-size: 16px;'><strong>Dosage:</strong> {$safeDose}</p>
                 <p style='margin: 8px 0; font-size: 16px;'><strong>Frequency:</strong> {$safeFreq}</p>
+                {$instrHtml}
                 <p style='margin: 12px 0 4px; font-weight: 700;'>Today's dose times:</p>
                 {$timesHumanHtml}
             </div>
