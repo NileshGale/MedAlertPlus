@@ -30,6 +30,7 @@ switch ($action) {
     case 'delete_all_notifications': deleteAllNotifications(); break;
     case 'accept_reschedule':   acceptReschedule();   break;
     case 'reject_reschedule':   rejectReschedule();   break;
+    case 'update_appointment':  updateAppointment();  break;
     case 'add_vitals':          addVitals();          break;
     case 'delete_vitals':       deleteVitals();       break;
     case 'mark_medicine_adherence': markMedicineAdherence(); break;
@@ -87,6 +88,77 @@ function bookAppointment() {
             ->execute([$doc['user_id'], 'New Appointment Request', ($pat['name']??'A patient') . ' booked a ' . $type . ' appointment on ' . date('M d, Y', strtotime($date)) . ' at ' . date('h:i A', strtotime($time))]);
     }
     echo json_encode(['success'=>true,'message'=>'Appointment booked successfully!','id'=>$apptId]);
+}
+
+function updateAppointment() {
+    global $pdo, $profileId;
+    $apptId = intval($_POST['appointment_id'] ?? 0);
+    $type   = in_array($_POST['type']??'', ['online','physical']) ? $_POST['type'] : 'physical';
+    $date   = $_POST['date'] ?? '';
+    $time   = $_POST['time'] ?? '';
+    $notes  = trim($_POST['notes'] ?? '');
+
+    if (!$apptId || !$date || !$time) { 
+        echo json_encode(['success'=>false,'message'=>'All required fields must be filled.']); return; 
+    }
+
+    // Check if appointment exists, belongs to patient and is pending
+    $stmt = $pdo->prepare("SELECT doctor_id, status FROM appointments WHERE id=? AND patient_id=?");
+    $stmt->execute([$apptId, $profileId]);
+    $appt = $stmt->fetch();
+
+    if (!$appt) {
+        echo json_encode(['success'=>false,'message'=>'Appointment not found.']); return;
+    }
+    if ($appt['status'] !== 'pending') {
+        echo json_encode(['success'=>false,'message'=>'Only pending appointments can be updated.']); return;
+    }
+
+    $docId = $appt['doctor_id'];
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { echo json_encode(['success'=>false,'message'=>'Invalid date.']); return; }
+    if (strtotime($date) < strtotime(date('Y-m-d'))) { echo json_encode(['success'=>false,'message'=>'Cannot book an appointment in the past.']); return; }
+
+    $timeNorm = trim($time);
+    if (preg_match('/^(\d{1,2}):(\d{2})$/', $timeNorm, $m)) {
+        $timeNorm = sprintf('%02d:%02d:00', (int) $m[1], (int) $m[2]);
+    } elseif (preg_match('/^(\d{1,2}):(\d{2}):(\d{2})$/', $timeNorm, $m)) {
+        $timeNorm = sprintf('%02d:%02d:%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+    } else {
+        echo json_encode(['success'=>false,'message'=>'Invalid time.']); return;
+    }
+    $tParts = explode(':', $timeNorm);
+    $mins = (int) $tParts[0] * 60 + (int) $tParts[1];
+    if ($mins < 10 * 60 || $mins > 18 * 60) {
+        echo json_encode(['success'=>false,'message'=>'Appointment time must be between 10:00 AM and 6:00 PM.']); return;
+    }
+
+    $bookingTs = strtotime($date . ' ' . $timeNorm);
+    if ($bookingTs === false || $bookingTs <= time()) {
+        echo json_encode(['success'=>false,'message'=>'Please choose a future date and time.']); return;
+    }
+    $time = $timeNorm;
+
+    // Check if slot already taken by another appointment
+    $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id=? AND appointment_date=? AND appointment_time=? AND status NOT IN ('cancelled') AND id != ?");
+    $check->execute([$docId, $date, $time, $apptId]);
+    if ($check->fetch()) { echo json_encode(['success'=>false,'message'=>'This time slot is already booked. Please choose another.']); return; }
+
+    $stmt = $pdo->prepare("UPDATE appointments SET type=?, appointment_date=?, appointment_time=?, patient_notes=? WHERE id=? AND patient_id=? AND status='pending'");
+    $stmt->execute([$type, $date, $time, $notes, $apptId, $profileId]);
+
+    // Notify doctor
+    $docInfo = $pdo->prepare("SELECT d.*, u.name as doc_name, u.id as user_id FROM doctors d JOIN users u ON d.user_id=u.id WHERE d.id=?");
+    $docInfo->execute([$docId]); $doc = $docInfo->fetch();
+    $patInfo = $pdo->prepare("SELECT u.name FROM patients p JOIN users u ON p.user_id=u.id WHERE p.id=?");
+    $patInfo->execute([$profileId]); $pat = $patInfo->fetch();
+
+    if ($doc) {
+        $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'info')")
+            ->execute([$doc['user_id'], 'Appointment Updated', ($pat['name']??'A patient') . ' updated their ' . $type . ' appointment on ' . date('M d, Y', strtotime($date)) . ' at ' . date('h:i A', strtotime($time))]);
+    }
+
+    echo json_encode(['success'=>true,'message'=>'Appointment updated successfully!']);
 }
 
 function cancelAppointment() {

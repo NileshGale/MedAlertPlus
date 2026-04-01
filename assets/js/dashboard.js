@@ -539,6 +539,7 @@ async function loadPatientAppointments() {
         ${a.prescription ? `<div style="margin-top:6px;font-size:13px;"><strong>Prescription:</strong> ${a.prescription}</div>` : ''}
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
           ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="cancelPatientAppointment(${a.id})">Cancel</button>` : ''}
+          ${(a.status === 'pending') ? `<button class="btn" style="background:#fff7ed;color:#92400e;border:1px solid #fcd34d;" onclick="openUpdateAppointmentModal(${a.id})">Update</button>` : ''}
           <button class="btn" style="background:#f8fafc;color:#1f2937;" onclick="toggleAppointmentDetails(${a.id})">Details</button>
         </div>
         <div id="patient-appointment-details-${a.id}" style="display:none;margin-top:10px;padding:10px;border:1px dashed var(--border);border-radius:8px;background:#f8fafc;">
@@ -1563,6 +1564,25 @@ async function loadAvailableDoctors(selectedDoctorId = null) {
 function openPatientBookingModal(selectedDoctorId = null, _name = null) {
   const modal = document.getElementById('bookingModal');
   if (!modal) return;
+  
+  // Reset form to "Book" state
+  const form = document.getElementById('appointmentForm');
+  if (form) {
+    form.reset();
+    const apptIdIn = document.getElementById('bookingApptId');
+    if (apptIdIn) apptIdIn.value = '';
+    const actionIn = form.querySelector('input[name="action"]');
+    if (actionIn) actionIn.value = 'book_appointment';
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.textContent = 'Confirm Booking';
+  }
+  
+  const titleEl = document.getElementById('bookingModalTitle');
+  if (titleEl) titleEl.textContent = 'Book Appointment';
+  
+  const docSel = document.getElementById('bookDocId');
+  if (docSel) docSel.disabled = false;
+
   loadAvailableDoctors(selectedDoctorId);
   const dIn = document.getElementById('bookingDateInput');
   if (dIn) {
@@ -1571,6 +1591,53 @@ function openPatientBookingModal(selectedDoctorId = null, _name = null) {
     if (dIn.value && dIn.value < today) dIn.value = today;
   }
   modal.style.display = 'flex';
+}
+
+async function openUpdateAppointmentModal(apptId) {
+  const modal = document.getElementById('bookingModal');
+  if (!modal) return;
+
+  try {
+    // We need to fetch all appointments to get the details of this one
+    // or we could add an API to fetch a single appointment. 
+    // For now, let's fetch the list again or use a cache if we had one.
+    // Since loadPatientAppointments doesn't cache, let's fetch.
+    const res = await fetch('../api/dashboard_data.php?type=patient_appointments');
+    const json = await res.json();
+    if (!json.success) return;
+    const a = json.data.find(x => Number(x.id) === Number(apptId));
+    if (!a) return;
+
+    const form = document.getElementById('appointmentForm');
+    if (!form) return;
+
+    // Set "Update" state
+    const titleEl = document.getElementById('bookingModalTitle');
+    if (titleEl) titleEl.textContent = 'Update Appointment';
+    
+    const apptIdIn = document.getElementById('bookingApptId');
+    if (apptIdIn) apptIdIn.value = apptId;
+    
+    const actionIn = form.querySelector('input[name="action"]');
+    if (actionIn) actionIn.value = 'update_appointment';
+    
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.textContent = 'Save Changes';
+
+    // Populate fields
+    await loadAvailableDoctors(a.doctor_id);
+    const docSel = document.getElementById('bookDocId');
+    if (docSel) docSel.disabled = true; // Cannot change doctor
+
+    form.querySelector('[name="type"]').value = a.type;
+    form.querySelector('[name="date"]').value = a.appointment_date;
+    form.querySelector('[name="time"]').value = formatApptTimeDisplay(a.appointment_time);
+    form.querySelector('[name="notes"]').value = a.patient_notes || '';
+
+    modal.style.display = 'flex';
+  } catch (e) {
+    showToast('Could not load appointment details', 'error');
+  }
 }
 
 /** @returns {string|null} error message or null if ok */
@@ -1599,26 +1666,33 @@ function closeModal(id) {
 const apptForm = document.getElementById('appointmentForm');
 if (apptForm) {
   apptForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(apptForm);
-      const d = formData.get('date');
-      const t = formData.get('time');
-      const clientErr = validatePatientBookingForm(typeof d === 'string' ? d : '', typeof t === 'string' ? t : '');
-      if (clientErr) {
-        showToast(clientErr, 'error');
-        return;
-      }
-      try {
-         const res = await fetch('../api/patient_api.php', { method: 'POST', body: formData });
-         const data = await res.json();
-         if (data.success) {
-            showToast(data.message, 'success');
-            closeModal('bookingModal');
-            apptForm.reset();
-            if (typeof showTab === 'function') showTab('appointments');
-         } else showToast(data.message, 'error');
-      } catch (err) { showToast('Booking failed', 'error'); }
-   });
+    e.preventDefault();
+    
+    // Enable doctor select temporarily to include it in FormData if needed by backend validation (though we ignore it for update)
+    const docSel = document.getElementById('bookDocId');
+    const wasDisabled = docSel ? docSel.disabled : false;
+    if (docSel) docSel.disabled = false;
+    const dataObj = new FormData(apptForm);
+    if (docSel) docSel.disabled = wasDisabled;
+
+    const dateVal = dataObj.get('date');
+    const timeVal = dataObj.get('time');
+    const err = validatePatientBookingForm(typeof dateVal === 'string' ? dateVal : '', typeof timeVal === 'string' ? timeVal : '');
+    if (err) { showToast(err, 'warning'); return; }
+
+    try {
+      const res = await fetch('../api/patient_api.php', { method: 'POST', body: dataObj });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        closeModal('bookingModal');
+        loadPatientAppointments();
+        // Update stats if on overview
+        if (typeof initDashboard === 'function') initDashboard(); 
+        if (typeof showTab === 'function') showTab('appointments');
+      } else showToast(data.message, 'error');
+    } catch (err) { showToast('Server error', 'error'); }
+  });
 }
 
 const vitalsFm = document.getElementById('vitalsForm');
