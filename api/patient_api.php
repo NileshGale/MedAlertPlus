@@ -2,7 +2,6 @@
 session_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/mail.php';
-require_once __DIR__ . '/twilio_helper.php';
 require_once __DIR__ . '/../cron/reminder_common.php';
 header('Content-Type: application/json');
 
@@ -212,7 +211,7 @@ function addMedicine() {
 
     // ---- Real-time Notification Trigger ----
     try {
-        $patientInfo = $pdo->prepare("SELECT u.name, u.email, p.whatsapp_number as profile_wa 
+        $patientInfo = $pdo->prepare("SELECT u.name, u.email 
                                     FROM patients p 
                                     JOIN users u ON p.user_id = u.id 
                                     WHERE p.id = ?");

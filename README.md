@@ -9,7 +9,7 @@ Med-Alert-Plus is a comprehensive healthcare platform designed to bridge the gap
 Med-Alert-Plus aims to modernize health tracking and medical consultations. By centralizing patient records, automating medicine reminders via multiple channels, and providing AI-driven insights, the platform ensures that users stay on top of their health while doctors manage their clinics with maximum efficiency.
 
 ### 🎯 Key Objectives:
-- **Zero-Miss Medication**: Automated multi-channel reminders (Email & SMS).
+- **Zero-Miss Medication**: Automated Email reminders via PHPMailer.
 - **Proactive Health Insights**: AI-powered analysis of symptoms and reports.
 - **Unified Scheduling**: A robust booking system for physical and virtual consultations.
 - **Emergency Preparedness**: Instant SOS alerts with real-time geolocation.
@@ -56,7 +56,6 @@ The "Brain" of the system, providing oversight and data insights.
 ## 🔌 Core Integrations (APIs)
 
 - **📧 PHPMailer**: Enterprise-grade email automation for medication reminders and appointment alerts.
-- **📱 Twilio SMS**: High-reliability SMS dispatch for critical health notifications.
 - **🤖 Artificial Intelligence**: Integrated logic for symptom pattern recognition and medical report summarization.
 - **📍 Google Maps / OSM**: Hybrid integration for SOS geolocation and finding nearby clinics.
 

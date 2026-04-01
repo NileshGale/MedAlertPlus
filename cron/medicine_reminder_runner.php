@@ -2,10 +2,8 @@
 
 require_once __DIR__ . '/reminder_common.php';
 require_once __DIR__ . '/../config/mail.php';
-// WhatsApp disabled: require_once __DIR__ . '/../api/twilio_helper.php';
-
 /**
- * Send due medicine reminders (daily digest email at set time, per-slot WhatsApp, DB log, in-app).
+ * Send due medicine reminders (daily digest email at set time, DB log, in-app).
  * Email with email_daily_time sends once per day only when local time is within the window (not before).
  *
  * @return int Number of dispatches (digest emails + per-slot channels)
@@ -22,8 +20,7 @@ function executeMedicineReminderDispatch(
 
     $today = date('Y-m-d');
     $sql = '
-        SELECT r.*, u.email, u.name AS patient_name, u.phone,
-               p.whatsapp_number AS profile_whatsapp
+        SELECT r.*, u.email, u.name AS patient_name, u.phone
         FROM medicine_reminders r
         JOIN patients p ON r.patient_id = p.id
         JOIN users u ON p.user_id = u.id
@@ -118,22 +115,7 @@ function executeMedicineReminderDispatch(
                 }
             }
 
-            /* WhatsApp Dispatched Disabled
-            $waTo = resolveReminderWhatsapp($rem);
-            if (!empty($rem['send_whatsapp']) && $waTo !== '') {
-                $plainWa = "Med Alert Plus — medicine reminder.\n\n"
-                    . "Hi {$rem['patient_name']},\n"
-                    . "Take: {$rem['medicine_name']} ({$rem['dosage']}).\n"
-                    . "Time: {$timePretty}\n\n"
-                    . 'Log in to the app to mark as taken.';
-                if (!sendWhatsAppMessage($waTo, $plainWa)) {
-                    $status = 'failed';
-                }
-                if ($verbose) {
-                    echo "WhatsApp: {$rem['medicine_name']} -> {$waTo}\n";
-                }
-            }
-            */
+            // Per-slot dispatch finished for this channel.
 
             $fullTime = $today . ' ' . $slotHi . ':00';
             $log = $pdo->prepare('INSERT INTO medicine_logs (reminder_id, patient_id, scheduled_time, status) VALUES (?, ?, ?, ?)');

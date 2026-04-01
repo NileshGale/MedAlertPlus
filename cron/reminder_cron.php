@@ -1,12 +1,10 @@
-<?php
 /**
  * Med-Alert-Plus Reminder Cron — run every minute (see scheduler.bat on Windows).
- * Sends: email (PHPMailer), WhatsApp (Twilio), optional SMS, in-app notification.
+ * Sends: email (PHPMailer) and in-app notifications. (Twilio removed).
  */
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/mail.php';
-require_once __DIR__ . '/../api/twilio_helper.php';
 require_once __DIR__ . '/medicine_reminder_runner.php';
 
 $tz = defined('REMINDER_TIMEZONE') ? REMINDER_TIMEZONE : 'Asia/Kolkata';
