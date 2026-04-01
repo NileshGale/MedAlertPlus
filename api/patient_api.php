@@ -44,7 +44,28 @@ function bookAppointment() {
     $time  = $_POST['time'] ?? '';
     $notes = trim($_POST['notes'] ?? '');
     if (!$docId || !$date || !$time) { echo json_encode(['success'=>false,'message'=>'All required fields must be filled.']); return; }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { echo json_encode(['success'=>false,'message'=>'Invalid date.']); return; }
     if (strtotime($date) < strtotime(date('Y-m-d'))) { echo json_encode(['success'=>false,'message'=>'Cannot book an appointment in the past.']); return; }
+
+    $timeNorm = trim($time);
+    if (preg_match('/^(\d{1,2}):(\d{2})$/', $timeNorm, $m)) {
+        $timeNorm = sprintf('%02d:%02d:00', (int) $m[1], (int) $m[2]);
+    } elseif (preg_match('/^(\d{1,2}):(\d{2}):(\d{2})$/', $timeNorm, $m)) {
+        $timeNorm = sprintf('%02d:%02d:%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+    } else {
+        echo json_encode(['success'=>false,'message'=>'Invalid time.']); return;
+    }
+    $tParts = explode(':', $timeNorm);
+    $mins = (int) $tParts[0] * 60 + (int) $tParts[1];
+    if ($mins < 10 * 60 || $mins > 18 * 60) {
+        echo json_encode(['success'=>false,'message'=>'Appointment time must be between 10:00 AM and 6:00 PM.']); return;
+    }
+
+    $bookingTs = strtotime($date . ' ' . $timeNorm);
+    if ($bookingTs === false || $bookingTs <= time()) {
+        echo json_encode(['success'=>false,'message'=>'Please choose a future date and time.']); return;
+    }
+    $time = $timeNorm;
 
     // Check if slot already taken
     $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id=? AND appointment_date=? AND appointment_time=? AND status NOT IN ('cancelled')");

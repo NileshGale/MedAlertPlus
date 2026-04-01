@@ -1564,7 +1564,32 @@ function openPatientBookingModal(selectedDoctorId = null, _name = null) {
   const modal = document.getElementById('bookingModal');
   if (!modal) return;
   loadAvailableDoctors(selectedDoctorId);
+  const dIn = document.getElementById('bookingDateInput');
+  if (dIn) {
+    const today = new Date().toISOString().slice(0, 10);
+    dIn.min = today;
+    if (dIn.value && dIn.value < today) dIn.value = today;
+  }
   modal.style.display = 'flex';
+}
+
+/** @returns {string|null} error message or null if ok */
+function validatePatientBookingForm(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return 'Date and time are required.';
+  const today = new Date().toISOString().slice(0, 10);
+  if (dateStr < today) return 'Cannot book a date in the past.';
+  const m = /^(\d{1,2}):(\d{2})$/.exec(timeStr.trim());
+  if (!m) return 'Choose a valid time.';
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const total = h * 60 + min;
+  if (total < 10 * 60 || total > 18 * 60) {
+    return 'Time must be between 10:00 AM and 6:00 PM.';
+  }
+  const start = new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`);
+  if (Number.isNaN(start.getTime())) return 'Invalid date or time.';
+  if (start.getTime() <= Date.now()) return 'Choose a future time (not in the past).';
+  return null;
 }
 
 function closeModal(id) {
@@ -1573,9 +1598,16 @@ function closeModal(id) {
 
 const apptForm = document.getElementById('appointmentForm');
 if (apptForm) {
-   apptForm.addEventListener('submit', async (e) => {
+  apptForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const formData = new FormData(apptForm);
+      const d = formData.get('date');
+      const t = formData.get('time');
+      const clientErr = validatePatientBookingForm(typeof d === 'string' ? d : '', typeof t === 'string' ? t : '');
+      if (clientErr) {
+        showToast(clientErr, 'error');
+        return;
+      }
       try {
          const res = await fetch('../api/patient_api.php', { method: 'POST', body: formData });
          const data = await res.json();

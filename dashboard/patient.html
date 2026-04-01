@@ -653,7 +653,8 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                  </div>
                  <div>
                     <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Preferred Time</label>
-                    <input type="time" name="time" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                    <input type="time" name="time" id="bookingTimeInput" required min="10:00" max="18:00" step="60" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                    <p style="font-size:11px;color:var(--muted);margin:6px 0 0">10:00 AM – 6:00 PM only. Past times are not allowed.</p>
                  </div>
               </div>
               <div style="margin-bottom:20px">
