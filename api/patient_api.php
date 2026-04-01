@@ -337,11 +337,43 @@ function updateProfile() {
     $phone     = trim($_POST['phone'] ?? '');
     $whatsapp  = trim($_POST['whatsapp'] ?? '');
     $emergency = trim($_POST['emergency'] ?? '');
-    if (!$name) { echo json_encode(['success'=>false,'message'=>'Name is required.']); return; }
-    $pdo->prepare("UPDATE users SET name=?,phone=? WHERE id=?")->execute([$name,$phone,$userId]);
-    $pdo->prepare("UPDATE patients SET age=?,gender=?,blood_group=?,disease=?,address=?,whatsapp_number=?,emergency_contact=? WHERE id=?")
-        ->execute([$age,$gender,$blood,$disease,$address,$whatsapp,$emergency,$profileId]);
-    echo json_encode(['success'=>true,'message'=>'Profile updated!']);
+    
+    if (!$name) { echo json_encode(['success'=>false, 'message'=>'Name is required.']); return; }
+
+    $profileImagePath = null;
+    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['profile_image'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png'];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success'=>false, 'message'=>'Invalid image format. JPG/PNG required.']);
+            return;
+        }
+        if ($file['size'] > 2*1024*1024) {
+            echo json_encode(['success'=>false, 'message'=>'Image too large. Max 2MB.']);
+            return;
+        }
+        $dir = __DIR__ . '/../uploads/profiles/';
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        $newName = 'profile_' . $profileId . '_' . time() . '.' . $ext;
+        if (move_uploaded_file($file['tmp_name'], $dir . $newName)) {
+            $profileImagePath = 'profiles/' . $newName;
+        }
+    }
+
+    $pdo->prepare("UPDATE users SET name=?, phone=? WHERE id=?")->execute([$name, $phone, $userId]);
+    
+    $sql = "UPDATE patients SET age=?, gender=?, blood_group=?, disease=?, address=?, whatsapp_number=?, emergency_contact=?";
+    $params = [$age, $gender, $blood, $disease, $address, $whatsapp, $emergency];
+    if ($profileImagePath) {
+        $sql .= ", profile_image=?";
+        $params[] = $profileImagePath;
+    }
+    $sql .= " WHERE id=?";
+    $params[] = $profileId;
+    
+    $pdo->prepare($sql)->execute($params);
+    echo json_encode(['success'=>true, 'message'=>'Profile updated successfully!']);
 }
 
 function changePassword() {

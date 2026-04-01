@@ -1446,7 +1446,51 @@ async function loadPatientProfile() {
     const el = form.querySelector(`[name="${k}"]`);
     if (el) el.value = v;
   });
+
+  // Handle Profile Image
+  const imgUrl = json.data.profile_image ? `../uploads/${json.data.profile_image}` : null;
+  const initial = (json.data.name || 'U').charAt(0).toUpperCase();
+
+  // Update Profile Tab Preview
+  const previewImg = document.getElementById('profileImageDisplay');
+  const previewInit = document.getElementById('profileImageInitial');
+  if (imgUrl) {
+    if (previewImg) { previewImg.src = imgUrl; previewImg.style.display = 'block'; }
+    if (previewInit) previewInit.style.display = 'none';
+  } else {
+    if (previewImg) previewImg.style.display = 'none';
+    if (previewInit) { previewInit.textContent = initial; previewInit.style.display = 'block'; }
+  }
+
+  // Update Dashboard Wide Avatars (Sidebar & Top Bar)
+  document.querySelectorAll('.su-avatar, .top-avatar').forEach(el => {
+    if (imgUrl) {
+      el.innerHTML = `<img src="${imgUrl}" alt="Avatar">`;
+    } else {
+      el.textContent = initial;
+    }
+  });
 }
+
+// Profile Image Preview Listener
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'profileImageInput') {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const previewImg = document.getElementById('profileImageDisplay');
+        const previewInit = document.getElementById('profileImageInitial');
+        if (previewImg) {
+          previewImg.src = event.target.result;
+          previewImg.style.display = 'block';
+        }
+        if (previewInit) previewInit.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+});
 
 async function loadDoctorAppointments() {
   const container = document.getElementById('doctorAppointmentsList');
@@ -2036,6 +2080,8 @@ async function initDashboard() {
                    }
                    // Fetch Vitals for Snapshot
                    loadHealthAnalytics();
+                   loadPatientReports();
+                   loadPatientProfile();
                }
                if (role === 'admin') {
                    const patientN = Number(st.patients ?? 0);
@@ -2127,7 +2173,10 @@ if (patientProfileForm) {
     const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
     const json = await res.json();
     showToast(json.message || (json.success ? 'Saved' : 'Failed'), json.success ? 'success' : 'error');
-    if (json.success) setTimeout(() => showTab('overview'), 600);
+    if (json.success) {
+        loadPatientProfile(); // Reload to update dashboard avatars
+        setTimeout(() => showTab('overview'), 600);
+    }
   });
 }
 
@@ -2341,5 +2390,163 @@ function getLevenshteinDistance(s1, s2) {
     }
   }
   return d[m][n];
+}
+
+// ---- Medical Reports Logic ----
+let allPatientReports = [];
+
+async function loadPatientReports() {
+  const container = document.getElementById('patientReportsList');
+  if (!container) return;
+
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=patient_reports');
+    const json = await res.json();
+    if (json.success) {
+      allPatientReports = json.data || [];
+      renderPatientReports(allPatientReports);
+    }
+  } catch (e) {
+    console.error('Failed to load reports', e);
+  }
+}
+
+function renderPatientReports(reports) {
+  const container = document.getElementById('patientReportsList');
+  if (!container) return;
+
+  if (reports.length === 0) {
+    container.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <input type="text" id="reportSearchInput" placeholder="Search report name..." style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+        <select id="reportTypeFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+          <option value="all">All Types</option>
+          <option value="pdf">PDF</option>
+          <option value="doc">DOC</option>
+          <option value="docx">DOCX</option>
+          <option value="jpg">JPG</option>
+          <option value="jpeg">JPEG</option>
+          <option value="png">PNG</option>
+        </select>
+      </div>
+      <div class="empty-state">No reports uploaded yet.</div>
+    `;
+    setupReportFilters();
+    return;
+  }
+
+  let html = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <input type="text" id="reportSearchInput" placeholder="Search report name..." value="${document.getElementById('reportSearchInput')?.value || ''}" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+      <select id="reportTypeFilter" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+        <option value="all" ${document.getElementById('reportTypeFilter')?.value === 'all' ? 'selected' : ''}>All Types</option>
+        <option value="pdf" ${document.getElementById('reportTypeFilter')?.value === 'pdf' ? 'selected' : ''}>PDF</option>
+        <option value="doc" ${document.getElementById('reportTypeFilter')?.value === 'doc' ? 'selected' : ''}>DOC</option>
+        <option value="docx" ${document.getElementById('reportTypeFilter')?.value === 'docx' ? 'selected' : ''}>DOCX</option>
+        <option value="jpg" ${document.getElementById('reportTypeFilter')?.value === 'jpg' ? 'selected' : ''}>JPG</option>
+        <option value="jpeg" ${document.getElementById('reportTypeFilter')?.value === 'jpeg' ? 'selected' : ''}>JPEG</option>
+        <option value="png" ${document.getElementById('reportTypeFilter')?.value === 'png' ? 'selected' : ''}>PNG</option>
+      </select>
+    </div>
+    <div class="reports-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:15px;max-height:400px;overflow-y:auto;padding:5px;">
+  `;
+
+  reports.forEach(r => {
+    let icon = 'fa-file-alt';
+    let color = '#64748b';
+    if (r.file_type === 'pdf') { icon = 'fa-file-pdf'; color = '#ef4444'; }
+    else if (['jpg', 'jpeg', 'png'].includes(r.file_type)) { icon = 'fa-file-image'; color = '#3b82f6'; }
+    else if (['doc', 'docx'].includes(r.file_type)) { icon = 'fa-file-word'; color = '#2563eb'; }
+
+    html += `
+      <div class="report-item" style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg);position:relative;transition:var(--transition);">
+        <div style="font-size:24px;color:${color};margin-bottom:8px;text-align:center;">
+          <i class="fas ${icon}"></i>
+        </div>
+        <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.file_name}">${r.file_name}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">${new Date(r.uploaded_at).toLocaleDateString()}</div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <a href="../uploads/${r.file_path}" target="_blank" class="btn" style="flex:1;padding:4px;font-size:11px;background:var(--card);border:1px solid var(--border)">View</a>
+          <button onclick="deletePatientReport(${r.id})" class="btn" style="padding:4px 8px;font-size:11px;background:rgba(239, 68, 68, 0.1);color:var(--danger);border:none"><i class="fas fa-trash-alt"></i></button>
+        </div>
+      </div>
+    `;
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+  setupReportFilters();
+}
+
+function setupReportFilters() {
+  const search = document.getElementById('reportSearchInput');
+  const typeFilter = document.getElementById('reportTypeFilter');
+
+  if (search) {
+    search.addEventListener('input', filterReports);
+    search.focus(); // Keep focus when typing
+  }
+  if (typeFilter) typeFilter.addEventListener('change', filterReports);
+}
+
+function filterReports() {
+  const query = document.getElementById('reportSearchInput')?.value.toLowerCase() || '';
+  const type = document.getElementById('reportTypeFilter')?.value || 'all';
+
+  const filtered = allPatientReports.filter(r => {
+    const matchesName = r.file_name.toLowerCase().includes(query);
+    const matchesType = type === 'all' || r.file_type === type;
+    return matchesName && matchesType;
+  });
+
+  renderPatientReports(filtered);
+}
+
+async function deletePatientReport(id) {
+  if (!await showConfirm('Delete this medical report?', { confirmText: 'Delete', type: 'danger' })) return;
+
+  try {
+    const res = await fetch('../api/patient_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `action=delete_report&id=${id}`
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast('Report deleted', 'success');
+      loadPatientReports();
+    } else showToast(json.message || 'Deletion failed', 'error');
+  } catch (err) {
+    showToast('Server error', 'error');
+  }
+}
+
+// Form Listener for Reports
+const reportForm = document.getElementById('reportUploadForm');
+if (reportForm) {
+  reportForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(reportForm);
+    const btn = reportForm.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+
+    try {
+      const res = await fetch('../api/patient_api.php', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.success) {
+        showToast(json.message, 'success');
+        reportForm.reset();
+        loadPatientReports();
+      } else showToast(json.message, 'error');
+    } catch (err) {
+      showToast('Network error', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  });
 }
 
