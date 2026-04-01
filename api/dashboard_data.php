@@ -278,7 +278,7 @@ try {
 
         case 'doctor_profile':
             if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, d.specialization, d.qualification, d.experience_years, d.fees, d.clinic_name, d.clinic_address, d.clinic_phone, d.about, d.clinic_status
+            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, d.specialization, d.qualification, d.experience_years, d.fees, d.clinic_name, d.clinic_address, d.clinic_phone, d.about, d.clinic_status, d.profile_image
                                    FROM users u
                                    JOIN doctors d ON d.user_id = u.id
                                    WHERE d.id = ?

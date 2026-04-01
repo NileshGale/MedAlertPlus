@@ -19,6 +19,7 @@ switch ($action) {
     case 'save_schedule':        saveSchedule();        break;
     case 'toggle_clinic_status': toggleClinicStatus();  break;
     case 'update_profile':       updateProfile();       break;
+    case 'remove_profile_image': removeProfileImage(); break;
     case 'change_password':      changePassword();      break;
     case 'mark_notif_read':      markNotifRead();       break;
     case 'propose_reschedule':   proposeReschedule();   break;
@@ -160,11 +161,44 @@ function updateProfile() {
     $clinicAddr  = trim($_POST['clinic_address'] ?? '');
     $clinicPhone = trim($_POST['clinic_phone'] ?? '');
     $about       = trim($_POST['about'] ?? '');
+    
     if (!$name) { echo json_encode(['success'=>false,'message'=>'Name required.']); return; }
+
+    $profileImagePath = null;
+    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['profile_image'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png'];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success'=>false, 'message'=>'Invalid image format. JPG/PNG required.']);
+            return;
+        }
+        if ($file['size'] > 2*1024*1024) {
+            echo json_encode(['success'=>false, 'message'=>'Image too large. Max 2MB.']);
+            return;
+        }
+        $dir = __DIR__ . '/../uploads/profiles/';
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        $newName = 'doc_' . $profileId . '_' . time() . '.' . $ext;
+        if (move_uploaded_file($file['tmp_name'], $dir . $newName)) {
+            $profileImagePath = 'profiles/' . $newName;
+        }
+    }
+
     $pdo->prepare("UPDATE users SET name=?,phone=? WHERE id=?")->execute([$name,$phone,$userId]);
-    $pdo->prepare("UPDATE doctors SET specialization=?,qualification=?,experience_years=?,fees=?,clinic_name=?,clinic_address=?,clinic_phone=?,about=? WHERE id=?")
-        ->execute([$spec,$qual,$exp,$fees,$clinic,$clinicAddr,$clinicPhone,$about,$profileId]);
-    echo json_encode(['success'=>true]);
+    
+    $sql = "UPDATE doctors SET specialization=?, qualification=?, experience_years=?, fees=?, clinic_name=?, clinic_address=?, clinic_phone=?, about=?";
+    $params = [$spec, $qual, $exp, $fees, $clinic, $clinicAddr, $clinicPhone, $about];
+    
+    if ($profileImagePath) {
+        $sql .= ", profile_image=?";
+        $params[] = $profileImagePath;
+    }
+    $sql .= " WHERE id=?";
+    $params[] = $profileId;
+    
+    $pdo->prepare($sql)->execute($params);
+    echo json_encode(['success'=>true, 'message'=>'Profile updated successfully!']);
 }
 
 function changePassword() {
@@ -235,3 +269,10 @@ function proposeReschedule() {
 
     echo json_encode(['success' => true]);
 }
+
+function removeProfileImage() {
+    global $pdo, $profileId;
+    $pdo->prepare("UPDATE doctors SET profile_image = NULL WHERE id = ?")->execute([$profileId]);
+    echo json_encode(['success'=>true, 'message'=>'Profile image removed.']);
+}
+?>

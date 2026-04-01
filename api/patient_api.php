@@ -35,6 +35,7 @@ switch ($action) {
     case 'delete_vitals':       deleteVitals();       break;
     case 'delete_cancelled_appointment': deleteCancelledAppointment(); break;
     case 'mark_medicine_adherence': markMedicineAdherence(); break;
+    case 'remove_profile_image': removeProfileImage(); break;
     default: echo json_encode(['success'=>false,'message'=>'Invalid action']);
 }
 

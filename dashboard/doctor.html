@@ -22,9 +22,11 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
   display: flex; flex-direction: column; transition: transform var(--transition);
 }
 .sidebar-brand { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.05); text-decoration: none; color: #fff; }
-.sb-logo-icon { width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 10px; }
+.sb-logo-icon { width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 10px; overflow: hidden; }
+.sb-logo-icon img { width: 100%; height: 100%; object-fit: cover; }
 .sidebar-user { padding: 20px 24px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 12px; }
-.su-avatar { width: 40px; height: 40px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.su-avatar { width: 40px; height: 40px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; overflow: hidden; }
+.su-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .su-name { font-weight: 600; font-size: 14px; }
 .sidebar-nav { flex: 1; padding: 16px; overflow-y: auto; }
 .nav-item {
@@ -37,7 +39,8 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 .main-content { flex: 1; margin-left: var(--sidebar-w); transition: margin var(--transition); }
 .top-bar { height: var(--header-h); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 900; }
 .page-title { font-weight: 800; font-size: 20px; color: var(--text); }
-.top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; overflow: hidden; }
+.top-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .page-content { padding: 32px; max-width: 1400px; margin: 0 auto; }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
@@ -283,8 +286,30 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
        <div class="card">
           <div class="card-header">Doctor Profile</div>
           <div class="card-body">
-             <form id="doctorProfileForm">
+             <form id="doctorProfileForm" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="update_profile">
+                
+                <!-- Profile Image Upload Section -->
+                <div style="display:flex; align-items:center; gap:20px; margin-bottom:24px; padding-bottom:20px; border-bottom:1px solid var(--border);">
+                   <div id="profileImagePreviewContainer" style="width:100px; height:100px; border-radius:50%; background:var(--bg); border:2px solid var(--primary); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:40px; color:var(--primary); font-weight:800;">
+                      <span id="profileImageInitial">D</span>
+                      <img id="profileImageDisplay" src="#" alt="Profile" style="display:none; width:100%; height:100%; object-fit:cover;">
+                   </div>
+                   <div>
+                      <label style="display:block; margin-bottom:8px; font-size:14px; font-weight:700;">Profile Photo (Optional)</label>
+                      <div style="display:flex; gap:10px; align-items:center;">
+                         <input type="file" name="profile_image" id="profileImageInput" accept="image/png, image/jpeg, image/jpg" style="display:none;">
+                         <button type="button" class="btn" style="padding:8px 16px; font-size:13px; background:var(--primary); color:#fff; border:none;" onclick="document.getElementById('profileImageInput').click()">
+                            <i class="fas fa-camera"></i> Change Photo
+                         </button>
+                         <button type="button" id="removeProfileImageBtn" class="btn" style="padding:8px 16px; font-size:13px; background:#fee2e2; color:var(--danger); border:1px solid #fecaca; display:none;" onclick="removeProfileImage()">
+                            <i class="fas fa-trash-alt"></i> Remove
+                         </button>
+                         <p style="font-size:12px; color:var(--muted);">JPG or PNG, max 2MB</p>
+                      </div>
+                   </div>
+                </div>
+
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
                    <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Name</label><input type="text" name="name" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>
                    <div><label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Phone</label><input type="text" name="phone" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"></div>

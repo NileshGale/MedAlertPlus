@@ -660,6 +660,9 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                           <button type="button" class="btn" style="padding:8px 16px; font-size:13px; background:var(--primary); color:#fff; border:none;" onclick="document.getElementById('profileImageInput').click()">
                              <i class="fas fa-camera"></i> Change Photo
                           </button>
+                          <button type="button" id="removeProfileImageBtn" class="btn" style="padding:8px 16px; font-size:13px; background:#fee2e2; color:var(--danger); border:1px solid #fecaca; display:none;" onclick="removeProfileImage()">
+                             <i class="fas fa-trash-alt"></i> Remove
+                          </button>
                           <p style="font-size:12px; color:var(--muted);">JPG or PNG, max 2MB</p>
                        </div>
                     </div>

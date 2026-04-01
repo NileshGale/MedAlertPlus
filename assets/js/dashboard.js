@@ -1470,6 +1470,10 @@ async function loadPatientProfile() {
       el.textContent = initial;
     }
   });
+
+  // Toggle Remove Button
+  const removeBtn = document.getElementById('removeProfileImageBtn');
+  if (removeBtn) removeBtn.style.display = imgUrl ? 'inline-flex' : 'none';
 }
 
 // Profile Image Preview Listener
@@ -1486,11 +1490,41 @@ document.addEventListener('change', (e) => {
           previewImg.style.display = 'block';
         }
         if (previewInit) previewInit.style.display = 'none';
+
+        // Show Remove Button during preview
+        const removeBtn = document.getElementById('removeProfileImageBtn');
+        if (removeBtn) removeBtn.style.display = 'inline-flex';
       };
       reader.readAsDataURL(file);
     }
   }
 });
+
+async function removeProfileImage() {
+  if (!await showConfirm('Are you sure you want to remove your profile photo?', { confirmText: 'Remove', type: 'danger' })) return;
+  
+  const role = window.location.pathname.toLowerCase().includes('doctor.') ? 'doctor' : 'patient';
+  const api = role === 'doctor' ? '../api/doctor_api.php' : '../api/patient_api.php';
+  
+  const res = await fetch(api, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'action=remove_profile_image'
+  });
+  
+  const json = await res.json();
+  if (json.success) {
+    showToast('Photo removed', 'success');
+    if (role === 'doctor') loadDoctorProfile();
+    else loadPatientProfile();
+    
+    // Clear the file input if any
+    const input = document.getElementById('profileImageInput');
+    if (input) input.value = '';
+  } else {
+    showToast(json.message || 'Removal failed', 'error');
+  }
+}
 
 async function loadDoctorAppointments() {
   const container = document.getElementById('doctorAppointmentsList');
@@ -1645,6 +1679,34 @@ async function loadDoctorProfile() {
     const el = form.querySelector(`[name="${k}"]`);
     if (el) el.value = v;
   });
+
+  // Handle Profile Image
+  const imgUrl = json.data.profile_image ? `../uploads/${json.data.profile_image}` : null;
+  const initial = (json.data.name || 'D').charAt(0).toUpperCase();
+
+  // Update Profile Tab Preview
+  const previewImg = document.getElementById('profileImageDisplay');
+  const previewInit = document.getElementById('profileImageInitial');
+  if (imgUrl) {
+    if (previewImg) { previewImg.src = imgUrl; previewImg.style.display = 'block'; }
+    if (previewInit) previewInit.style.display = 'none';
+  } else {
+    if (previewImg) previewImg.style.display = 'none';
+    if (previewInit) { previewInit.textContent = initial; previewInit.style.display = 'block'; }
+  }
+
+  // Update Dashboard Wide Avatars (Sidebar & Top Bar)
+  document.querySelectorAll('.su-avatar, .top-avatar').forEach(el => {
+    if (imgUrl) {
+      el.innerHTML = `<img src="${imgUrl}" alt="Avatar">`;
+    } else {
+      el.textContent = initial;
+    }
+  });
+
+  // Toggle Remove Button
+  const removeBtn = document.getElementById('removeProfileImageBtn');
+  if (removeBtn) removeBtn.style.display = imgUrl ? 'inline-flex' : 'none';
 }
 
 function downloadUserList() {
@@ -2096,6 +2158,8 @@ async function initDashboard() {
                    if (document.getElementById('stat-total')) document.getElementById('stat-total').textContent = st.total || 0;
                    if (document.getElementById('stat-pending')) document.getElementById('stat-pending').textContent = st.pending || 0;
                    if (document.getElementById('stat-today')) document.getElementById('stat-today').textContent = st.today || 0;
+                   
+                   loadDoctorProfile();
                }
            }
            
@@ -2188,7 +2252,10 @@ if (doctorProfileForm) {
     const res = await fetch('../api/doctor_api.php', { method: 'POST', body: fd });
     const json = await res.json();
     showToast(json.message || (json.success ? 'Saved' : 'Failed'), json.success ? 'success' : 'error');
-    if (json.success) setTimeout(() => showTab('overview'), 600);
+    if (json.success) {
+        loadDoctorProfile(); // Sync avatars after save
+        setTimeout(() => showTab('overview'), 600);
+    }
   });
 
   // Doctor Specialization Suggestions (Profile Update)
