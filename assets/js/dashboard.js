@@ -1532,7 +1532,7 @@ async function loadPatientProfile() {
   // Update Dashboard Wide Avatars (Sidebar & Top Bar)
   document.querySelectorAll('.su-avatar, .top-avatar').forEach(el => {
     if (imgUrl) {
-      el.innerHTML = `<img src="${imgUrl}" alt="Avatar">`;
+      el.innerHTML = `<img src="${imgUrl}" onerror="this.style.display='none'; this.parentElement.textContent='${initial}'" alt="Avatar">`;
     } else {
       el.textContent = initial;
     }
@@ -1611,15 +1611,35 @@ async function loadDoctorAppointments() {
       return `
       <div class="doctor-appointment-card ${a.status}">
         <div class="dr-appt-main">
-          <div class="dr-appt-left">
-            <div class="dr-appt-patient-name">${a.patient_name}</div>
-            <div class="dr-appt-meta">
-              <span><i class="fas fa-phone-alt"></i> ${a.patient_phone || 'No phone'}</span>
-              <span>·</span>
-              <span style="font-weight:700;color:var(--text-light);">${a.type.toUpperCase()}</span>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div class="patient-avatar-circle" id="appt-avatar-${a.id}" style="width:40px; height:40px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; overflow:hidden; border:2px solid #fff; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                ${a.profile_image && a.profile_image.trim() ? `<img src="../uploads/${a.profile_image}" onerror="this.style.display='none'; this.parentElement.innerHTML='<span>${a.patient_name.charAt(0)}</span>'" style="width:100%; height:100%; object-fit:cover;">` : `<span>${a.patient_name.charAt(0)}</span>`}
+              </div>
+              <div>
+                <div class="dr-appt-patient-name" style="margin-bottom:2px;">${a.patient_name}</div>
+                <div class="dr-appt-meta" style="font-size:11px;">
+                  <span><i class="fas fa-phone-alt"></i> ${a.patient_phone || 'No phone'}</span>
+                  <span>·</span>
+                  <span style="font-weight:700;color:var(--primary);">${a.type.toUpperCase()}</span>
+                </div>
+              </div>
             </div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-              <i class="fas fa-user-circle"></i> ${a.age ? a.age + ' yrs' : '-'} · ${a.gender || '-'} · Blood: ${a.blood_group || '-'}
+
+            <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;">
+              <span class="badge" style="background:#f0f7ff; color:#0052cc; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+                <i class="fas fa-birthday-cake"></i> ${a.age ? a.age + ' yrs' : '-'}
+              </span>
+              <span class="badge" style="background:#fff0f6; color:#c4127b; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+                <i class="fas fa-${(a.gender||'').toLowerCase() === 'female' ? 'venus' : 'mars'}"></i> ${a.gender || '-'}
+              </span>
+              <span class="badge" style="background:#fff1f0; color:#cf1322; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+                <i class="fas fa-tint"></i> ${a.blood_group || '-'}
+              </span>
+              ${a.disease ? `
+                <span class="badge" style="background:#f6ffed; color:#389e0d; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+                  <i class="fas fa-stethoscope"></i> ${a.disease}
+                </span>
+              ` : ''}
             </div>
             
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
@@ -1774,19 +1794,43 @@ async function loadDoctorPatients() {
     return;
   }
   container.innerHTML = json.data.map(p => `
-    <div style="padding:12px; border:1px solid var(--border); border-radius:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <div style="font-weight:700; color:var(--text);">${p.name}</div>
-        <div style="font-size:12px; color:var(--muted);">${p.email} · ${p.phone || '-'}</div>
-        <div style="font-size:11px; color:var(--primary); font-weight:700; margin-top:4px;">
-          PATIENT ID: #${p.id}
+    <div style="padding:16px; border:1px solid var(--border); border-radius:16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:flex-start; background:var(--card); transition:transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)'" onmouseout="this.style.transform='none'; this.style.boxShadow='none'">
+      <div style="display:flex; gap:16px;">
+        <div class="patient-avatar-circle" id="pat-avatar-${p.id}" style="width:56px; height:56px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; overflow:hidden; border:2px solid #fff; box-shadow:0 3px 6px rgba(0,0,0,0.1); flex-shrink:0;">
+          ${p.profile_image && p.profile_image.trim() ? `<img src="../uploads/${p.profile_image}" onerror="this.style.display='none'; this.parentElement.innerHTML='<span>${p.name.charAt(0)}</span>'" style="width:100%; height:100%; object-fit:cover;">` : `<span>${p.name.charAt(0)}</span>`}
         </div>
-        <div style="font-size:11px; color:var(--muted); margin-top:2px;">
-          <i class="fas fa-user-circle"></i> Profile: ${p.age ? p.age + ' yrs' : '-'} · ${p.gender || '-'} · Blood: ${p.blood_group || '-'}
+        <div>
+          <div style="font-weight:700; color:var(--text); font-size:16px; margin-bottom:2px;">${p.name}</div>
+          <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+            <i class="far fa-envelope"></i> ${p.email} · <i class="fas fa-phone-alt"></i> ${p.phone || '-'}
+          </div>
+          
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+            <span class="badge" style="background:#f0f7ff; color:#0052cc; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+              <i class="fas fa-birthday-cake"></i> ${p.age ? p.age + ' yrs' : '-'}
+            </span>
+            <span class="badge" style="background:#fff0f6; color:#c4127b; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+              <i class="fas fa-${(p.gender||'').toLowerCase() === 'female' ? 'venus' : 'mars'}"></i> ${p.gender || '-'}
+            </span>
+            <span class="badge" style="background:#fff1f0; color:#cf1322; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+              <i class="fas fa-tint"></i> ${p.blood_group || '-'}
+            </span>
+            ${p.disease ? `
+              <span class="badge" style="background:#f6ffed; color:#389e0d; border:none; padding:3px 8px; font-size:10px; border-radius:4px;">
+                <i class="fas fa-stethoscope"></i> ${p.disease}
+              </span>
+            ` : ''}
+          </div>
+
+          <div style="font-size:11px; color:var(--muted); display:flex; align-items:center; gap:12px;">
+            <span><i class="fas fa-id-badge" style="color:var(--primary);"></i> ID: #${p.id}</span>
+            ${p.address ? `<span><i class="fas fa-map-marker-alt"></i> ${p.address}</span>` : ''}
+          </div>
         </div>
       </div>
-      <div>
-        <button class="btn btn-primary" style="font-size:12px; display:flex; align-items:center; gap:8px;" onclick="viewPatientReportsByDoctor(${p.id}, '${p.name.replace(/'/g, "\\'")}', '${p.age || '-'}', '${p.gender || '-'}', '${p.blood_group || '-'}')">
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+        <div style="font-size:10px; color:var(--muted); font-weight:600; text-transform:uppercase;">Last Visit: ${p.last_appointment ? p.last_appointment.split(' ')[0] : 'Never'}</div>
+        <button class="btn btn-primary" style="font-size:12px; padding:8px 16px; display:flex; align-items:center; gap:8px; border-radius:8px;" onclick="viewPatientReportsByDoctor(${p.id}, '${p.name.replace(/'/g, "\\'")}', '${p.age || '-'}', '${p.gender || '-'}', '${p.blood_group || '-'}', '${p.profile_image || ''}')">
           <i class="fas fa-file-medical"></i> Medical Report
         </button>
       </div>
@@ -1794,15 +1838,34 @@ async function loadDoctorPatients() {
   `).join('');
 }
 
-async function viewPatientReportsByDoctor(patientId, patientName, age, gender, blood) {
+async function viewPatientReportsByDoctor(patientId, patientName, age, gender, blood, profileImage) {
   const modal = document.getElementById('doctorPatientReportsModal');
   const title = document.getElementById('reportsModalTitle');
   const subtitle = document.getElementById('reportsModalSubtitle');
   const content = document.getElementById('reportsModalContent');
   if (!modal || !content) return;
 
-  title.textContent = patientName;
-  if (subtitle) subtitle.innerHTML = `<i class="fas fa-id-card"></i> ${age} yrs · ${gender} · Blood Group: ${blood}`;
+  // Header with Avatar
+  const avatarHtml = (profileImage && profileImage.trim())
+    ? `<img src="../uploads/${profileImage}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'width:40px; height:40px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:700; border:2px solid #fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);\'>${patientName.charAt(0)}</div>'" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid #fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);">`
+    : `<div style="width:40px; height:40px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:700; border:2px solid #fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);">${patientName.charAt(0)}</div>`;
+
+  title.innerHTML = `
+    <div style="display:flex; align-items:center; gap:12px;">
+      ${avatarHtml}
+      <span>${patientName}</span>
+    </div>
+  `;
+  
+  if (subtitle) {
+    subtitle.innerHTML = `
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">
+        <span class="badge" style="background:rgba(0,82,204,0.05); color:#0052cc; border:none; font-size:10px;">Age: ${age}</span>
+        <span class="badge" style="background:rgba(196,18,123,0.05); color:#c4127b; border:none; font-size:10px;">Sex: ${gender}</span>
+        <span class="badge" style="background:rgba(207,19,34,0.05); color:#cf1322; border:none; font-size:10px;">Blood: ${blood}</span>
+      </div>
+    `;
+  }
   content.innerHTML = '<div class="empty-state">Loading reports...</div>';
   modal.style.display = 'flex';
 
@@ -1883,7 +1946,7 @@ async function loadDoctorProfile() {
   // Update Dashboard Wide Avatars (Sidebar & Top Bar)
   document.querySelectorAll('.su-avatar, .top-avatar').forEach(el => {
     if (imgUrl) {
-      el.innerHTML = `<img src="${imgUrl}" alt="Avatar">`;
+      el.innerHTML = `<img src="${imgUrl}" onerror="this.style.display='none'; this.parentElement.textContent='${initial}'" alt="Avatar">`;
     } else {
       el.textContent = initial;
     }

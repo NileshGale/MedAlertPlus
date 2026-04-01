@@ -260,7 +260,7 @@ try {
 
         case 'doctor_appointments':
             if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT a.*, u.name AS patient_name, u.phone AS patient_phone, p.gender, p.age, p.blood_group
+            $stmt = $pdo->prepare("SELECT a.*, u.name AS patient_name, u.phone AS patient_phone, p.gender, p.age, p.blood_group, p.disease, p.address, p.profile_image
                                    FROM appointments a
                                    JOIN patients p ON a.patient_id = p.id
                                    JOIN users u ON p.user_id = u.id
@@ -284,13 +284,13 @@ try {
 
         case 'doctor_patients':
             if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group,
+            $stmt = $pdo->prepare("SELECT p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group, p.disease, p.address, p.profile_image,
                                           MAX(a.appointment_date) AS last_appointment
                                    FROM appointments a
                                    JOIN patients p ON a.patient_id = p.id
                                    JOIN users u ON p.user_id = u.id
                                    WHERE a.doctor_id = ?
-                                   GROUP BY p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group
+                                   GROUP BY p.id, u.name, u.email, u.phone, p.gender, p.age, p.blood_group, p.disease, p.address, p.profile_image
                                    ORDER BY last_appointment DESC");
             $stmt->execute([$profileId]);
             $response['data'] = $stmt->fetchAll();
