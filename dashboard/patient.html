@@ -69,6 +69,18 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 }
 .nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
 .nav-item.active { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+
+/* ── Symptom Checker Grid ── */
+.symptom-number-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 24px; max-width: 400px; }
+.symptom-number-card {
+  height: 50px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
+  font-weight: 700; font-size: 16px; transition: all 0.2s ease; background: var(--card);
+}
+.symptom-number-card:hover { border-color: var(--primary-light); background: #f0f7ff; color: var(--primary); transform: translateY(-2px); }
+.symptom-number-card.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+
+/* ── Toast Container ── */
 .main-content { flex: 1; margin-left: var(--sidebar-w); transition: margin var(--transition); }
 .top-bar { height: var(--header-h); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; position: sticky; top: 0; z-index: 900; }
 .page-title { font-weight: 800; font-size: 20px; color: var(--text); }
@@ -76,6 +88,20 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 .top-bar-right { display: flex; align-items: center; gap: 10px; }
 .top-avatar { width: 40px; height: 40px; background: var(--primary-light); color: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; overflow: hidden; }
 .top-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Symptom Suggestion ── */
+.symptom-suggestion {
+  display: none; font-size: 11px; margin-top: 4px; padding: 4px 8px; border-radius: 6px;
+  background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd;
+  animation: fadeIn 0.2s ease-out;
+}
+.suggestion-link {
+  font-weight: 700; text-decoration: underline; cursor: pointer; color: var(--primary);
+}
+.suggestion-link:hover { color: var(--primary-dark); }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
 .notif-btn {
   position: relative;
   background: var(--bg);
@@ -482,13 +508,23 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
        <div class="card" style="max-width:800px;margin:0 auto">
           <div class="card-header">AI Symptom Checker</div>
           <div class="card-body">
-             <div id="symptomStep1">
-                <p style="margin-bottom:20px;color:var(--text-light)">Enter the number of symptoms you are feeling today.</p>
-                <div style="display:flex;gap:15px">
-                   <input type="number" id="symptomCount" min="1" max="10" value="1" style="width:100px;padding:10px;border:1px solid var(--border);border-radius:8px;">
-                   <button class="btn btn-primary" onclick="generateSymptomInputs()">Next</button>
-                </div>
-             </div>
+              <div id="symptomStep1">
+                 <p style="margin-bottom:20px;color:var(--text-light)">How many symptoms are you experiencing today?</p>
+                 <input type="hidden" id="symptomCount" value="1">
+                 <div class="symptom-number-grid">
+                    <div class="symptom-number-card active" onclick="setSymptomCount(1, this)">1</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(2, this)">2</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(3, this)">3</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(4, this)">4</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(5, this)">5</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(6, this)">6</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(7, this)">7</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(8, this)">8</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(9, this)">9</div>
+                    <div class="symptom-number-card" onclick="setSymptomCount(10, this)">10</div>
+                 </div>
+                 <button class="btn btn-primary" style="width:100%" onclick="generateSymptomInputs()">Confirm & Continue <i class="fas fa-arrow-right"></i></button>
+              </div>
              <form id="symptomCheckerForm" style="display:none">
                 <div id="symptomInputsContainer" style="margin-bottom:20px"></div>
                 <button type="submit" class="btn btn-primary" style="width:100%">Analyze Symptoms</button>
@@ -823,6 +859,12 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 <script>
 function initHealthAnalytics() {
   if (typeof loadHealthAnalytics === 'function') loadHealthAnalytics();
+}
+
+function setSymptomCount(num, el) {
+    document.getElementById('symptomCount').value = num;
+    document.querySelectorAll('.symptom-number-card').forEach(card => card.classList.remove('active'));
+    el.classList.add('active');
 }
 
 document.addEventListener('DOMContentLoaded', () => {

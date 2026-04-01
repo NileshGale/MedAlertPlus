@@ -654,6 +654,59 @@ async function deleteMedicine(id, name) {
   }
 }
 
+// ---- Patient: Symptom Checker Valid List & Spellcheck ----
+const VALID_SYMPTOMS = [
+  'fever', 'cough', 'sore throat', 'headache', 'nausea', 'sensitivity to light',
+  'stomach pain', 'diarrhea', 'bloating', 'back pain', 'stiffness', 'muscle ache',
+  'shortness of breath', 'wheezing', 'chest tightness', 'skin rash', 'itching', 'redness'
+];
+
+function getLevenshteinDistance(s, t) {
+    if (!s.length) return t.length;
+    if (!t.length) return s.length;
+    const arr = [];
+    for (let i = 0; i <= t.length; i++) { arr[i] = [i]; }
+    for (let j = 0; j <= s.length; j++) { arr[0][j] = j; }
+    for (let i = 1; i <= t.length; i++) {
+        for (let j = 1; j <= s.length; j++) {
+            arr[i][j] = Math.min(arr[i-1][j-1] + (s[j-1] === t[i-1] ? 0 : 1), arr[i-1][j] + 1, arr[i][j-1] + 1);
+        }
+    }
+    return arr[t.length][s.length];
+}
+
+function checkSymptomSpell(input) {
+    const val = input.value.trim().toLowerCase();
+    const suggestionBox = input.parentElement.nextElementSibling;
+    if (val.length < 3 || VALID_SYMPTOMS.includes(val)) {
+        suggestionBox.style.display = 'none';
+        return;
+    }
+    let best = null, minDist = 3;
+    VALID_SYMPTOMS.forEach(s => {
+        const d = getLevenshteinDistance(val, s);
+        if (d < minDist) { minDist = d; best = s; }
+    });
+    if (best) {
+        suggestionBox.innerHTML = `Did you mean: <span class="suggestion-link" onclick="applySymptomSuggestion(this, '${best}')">${best}</span>?`;
+        suggestionBox.style.display = 'block';
+    } else {
+        suggestionBox.style.display = 'none';
+    }
+}
+
+function applySymptomSuggestion(linkEl, suggestion) {
+    const suggestionBox = linkEl.parentElement;
+    const input = suggestionBox.previousElementSibling.querySelector('input');
+    if (input) {
+        input.value = suggestion;
+        suggestionBox.style.display = 'none';
+        input.focus();
+        // Fire input event to toggle the clear icon if needed
+        input.dispatchEvent(new Event('input'));
+    }
+}
+
 // ---- Patient: Symptom Checker ----
 function generateSymptomInputs() {
   const count = document.getElementById('symptomCount').value;
@@ -663,7 +716,17 @@ function generateSymptomInputs() {
   for (let i = 1; i <= count; i++) {
     container.innerHTML += `<div style="margin-bottom:15px">
       <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Symptom ${i}</label>
-      <input type="text" name="symptoms[]" required placeholder="e.g. Fever, Headache..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+      <div style="position:relative">
+         <input type="text" name="symptoms[]" required placeholder="e.g. Fever, Headache..." 
+                style="width:100%;padding:10px 35px 10px 10px;border:1px solid var(--border);border-radius:8px;transition:all 0.2s;"
+                oninput="this.nextElementSibling.style.display = this.value ? 'block' : 'none'; checkSymptomSpell(this);">
+         <i class="fas fa-times-circle" 
+            onclick="this.previousElementSibling.value=''; this.style.display='none'; this.previousElementSibling.focus(); this.parentElement.nextElementSibling.style.display='none';" 
+            style="position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--muted); cursor:pointer; font-size:14px; display:none; transition:color 0.2s;"
+            onmouseover="this.style.color='var(--danger)'" 
+            onmouseout="this.style.color='var(--muted)'"></i>
+      </div>
+      <div class="symptom-suggestion"></div>
     </div>`;
   }
   document.getElementById('symptomStep1').style.display = 'none';
