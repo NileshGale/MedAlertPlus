@@ -184,6 +184,7 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
 }
 /* Premium Patient Appointment Card Styles */
 .patient-appointment-card {
+  position: relative;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -193,7 +194,31 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 100%;
+}
+.patient-appointment-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.05); }
+
+.patient-appt-delete {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #fee2e2;
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+}
+.patient-appt-delete:hover {
+  background: #fee2e2;
+  border-color: #fecaca;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(239,68,68,0.1);
 }
 .patient-appointment-card:hover {
   transform: translateY(-4px);

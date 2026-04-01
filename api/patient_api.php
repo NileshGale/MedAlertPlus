@@ -33,6 +33,7 @@ switch ($action) {
     case 'update_appointment':  updateAppointment();  break;
     case 'add_vitals':          addVitals();          break;
     case 'delete_vitals':       deleteVitals();       break;
+    case 'delete_cancelled_appointment': deleteCancelledAppointment(); break;
     case 'mark_medicine_adherence': markMedicineAdherence(); break;
     default: echo json_encode(['success'=>false,'message'=>'Invalid action']);
 }
@@ -502,5 +503,23 @@ function markMedicineAdherence() {
                            ON DUPLICATE KEY UPDATE status = VALUES(status)");
     $stmt->execute([$reminderId, $profileId, $today, $status]);
     echo json_encode(['success'=>true,'message'=>'Adherence updated.']);
+}
+
+function deleteCancelledAppointment() {
+    global $pdo, $profileId;
+    $id = intval($_POST['id'] ?? 0);
+    if (!$id) {
+        echo json_encode(['success' => false, 'message' => 'Invalid appointment.']);
+        return;
+    }
+    $chk = $pdo->prepare("SELECT id FROM appointments WHERE id = ? AND patient_id = ? AND status = 'cancelled'");
+    $chk->execute([$id, $profileId]);
+    if (!$chk->fetch()) {
+        echo json_encode(['success' => false, 'message' => 'Only cancelled appointments can be deleted.']);
+        return;
+    }
+    ensureAppointmentRescheduleSchema($pdo);
+    $pdo->prepare('DELETE FROM appointments WHERE id = ? AND patient_id = ?')->execute([$id, $profileId]);
+    echo json_encode(['success' => true]);
 }
 

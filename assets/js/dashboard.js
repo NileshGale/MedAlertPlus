@@ -525,6 +525,7 @@ async function loadPatientAppointments() {
       
       return `
       <div class="patient-appointment-card ${a.status}">
+        ${a.status === 'cancelled' ? `<div class="patient-appt-delete" title="Delete record" onclick="patientDeleteCancelledAppointment(${a.id})"><i class="fas fa-trash-alt"></i></div>` : ''}
         <div class="patient-appt-dr-name">Dr. ${a.doctor_name}</div>
         <div class="patient-appt-specialty">${a.specialization || 'Specialist'} · ${a.clinic_name || 'Clinic'}</div>
         <div class="patient-appt-status ${a.status}">${a.status}</div>
@@ -604,6 +605,22 @@ async function cancelPatientAppointment(id) {
     loadPatientAppointments();
   } else {
     showToast(json.message || 'Failed to cancel', 'error');
+  }
+}
+
+async function patientDeleteCancelledAppointment(id) {
+  if (!await showConfirm('Permanently delete this appointment record?', { confirmText: 'Delete', type: 'danger' })) return;
+  const res = await fetch('../api/patient_api.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `action=delete_cancelled_appointment&id=${id}`
+  });
+  const json = await res.json();
+  if (json.success) {
+    showToast('Appointment record removed', 'success');
+    loadPatientAppointments();
+  } else {
+    showToast(json.message || 'Error deleting appointment', 'error');
   }
 }
 
