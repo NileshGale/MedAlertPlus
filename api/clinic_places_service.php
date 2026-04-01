@@ -152,12 +152,15 @@ function clinicNominatimReverse(float $lat, float $lng): ?array
 
 function clinicOverpassNearby(float $lat, float $lng, int $radius = 8000): array
 {
-    $radius = max(1000, min(20000, $radius));
+    $radius = max(500, min(30000, $radius));
     $query = '[out:json][timeout:25];('
         . 'node["amenity"~"hospital|clinic|doctors"](around:' . $radius . ',' . $lat . ',' . $lng . ');'
         . 'way["amenity"~"hospital|clinic|doctors"](around:' . $radius . ',' . $lat . ',' . $lng . ');'
         . 'relation["amenity"~"hospital|clinic|doctors"](around:' . $radius . ',' . $lat . ',' . $lng . ');'
-        . ');out center 30;';
+        . 'node["healthcare"~"hospital|clinic|doctor"](around:' . $radius . ',' . $lat . ',' . $lng . ');'
+        . 'way["healthcare"~"hospital|clinic|doctor"](around:' . $radius . ',' . $lat . ',' . $lng . ');'
+        . 'relation["healthcare"~"hospital|clinic|doctor"](around:' . $radius . ',' . $lat . ',' . $lng . ');'
+        . ');out center 40;';
     $url = 'https://overpass-api.de/api/interpreter?data=' . rawurlencode($query);
     $json = clinicHttpJson($url, 25);
     if (!$json || !isset($json['elements']) || !is_array($json['elements'])) {
@@ -377,7 +380,14 @@ function mergeClinicSearchResults(PDO $pdo, array $get): array
     }
 
     if (count($ext) === 0 && $lat !== null && $lng !== null) {
-        $osmEls = clinicOverpassNearby($lat, $lng, 10000);
+        $searchRadius = isset($get['max_km']) ? (int)((float)$get['max_km'] * 1000) : 10000;
+        $osmEls = clinicOverpassNearby($lat, $lng, $searchRadius);
+        
+        // Auto-expand if no results found within requested radius (up to 20km)
+        if (count($osmEls) === 0 && $searchRadius < 20000) {
+            $osmEls = clinicOverpassNearby($lat, $lng, 20000);
+        }
+        
         foreach ($osmEls as $el) {
             $row = clinicFromOsmElement($el);
             if ($row) {
