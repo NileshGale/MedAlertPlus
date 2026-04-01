@@ -514,7 +514,7 @@ async function loadPatientAppointments() {
     container.innerHTML = filtered.map(a => {
       const propTime = a.proposed_appointment_time ? formatApptTimeDisplay(a.proposed_appointment_time) : '';
       const proposeBlock = a.proposed_appointment_date ? `
-        <div style="margin-top:12px;padding:12px;background:#fffbeb;border-radius:12px;border:1px solid #fcd34d;font-size:13px;">
+        <div style="margin-top:12px;padding:12px;background:#fffbeb;border-radius:12px;border:1px solid #fcd34d;font-size:13px;text-align:left;">
           <strong style="color:#92400e"><i class="fas fa-exclamation-circle"></i> New time proposed:</strong> 
           <div style="margin-top:4px;">${a.proposed_appointment_date} @ ${propTime || a.proposed_appointment_time}</div>
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
@@ -524,61 +524,59 @@ async function loadPatientAppointments() {
         </div>` : '';
       
       return `
-      <div class="appointment-card ${a.status}">
-        <div class="appt-header">
-          <div>
-            <div class="appt-name">Dr. ${a.doctor_name}</div>
-            <div class="appt-subtext">
-              <span>${a.specialization || 'Specialist'}</span>
-              <span>·</span>
-              <span>${a.clinic_name || 'Clinic'}</span>
-            </div>
-          </div>
-          <span class="badge ${a.status === 'confirmed' || a.status === 'completed' ? 'badge-success' : (a.status === 'pending' ? 'badge-warning' : 'badge-danger')}">${a.status}</span>
+      <div class="patient-appointment-card ${a.status}">
+        <div class="patient-appt-dr-name">Dr. ${a.doctor_name}</div>
+        <div class="patient-appt-specialty">${a.specialization || 'Specialist'} · ${a.clinic_name || 'Clinic'}</div>
+        <div class="patient-appt-status ${a.status}">${a.status}</div>
+
+        <div class="patient-appt-info-row">
+          <i class="far fa-calendar-alt"></i>
+          <span>${a.appointment_date} at ${formatApptTimeDisplay(a.appointment_time)}</span>
+        </div>
+        
+        <div class="patient-appt-info-row">
+          <i class="fas fa-video"></i>
+          <span>${a.type.toUpperCase()} Consultation</span>
         </div>
 
-        <div class="appt-body">
-          <div class="appt-info-row">
-            <i class="fas fa-calendar-alt"></i>
-            <span>${a.appointment_date} at ${formatApptTimeDisplay(a.appointment_time)}</span>
+        ${proposeBlock}
+        
+        ${a.meet_link ? `
+          <div class="patient-appt-info-row" style="margin-top:4px;">
+            <i class="fas fa-link"></i>
+            <a href="${a.meet_link}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Join Meeting</a>
           </div>
-          <div class="appt-info-row">
-            <i class="fas fa-video"></i>
-            <span>${a.type.toUpperCase()} Consultation</span>
-          </div>
-          
-          ${proposeBlock}
-          
-          ${a.meet_link ? `
-            <div class="appt-info-row" style="margin-top:8px;">
-              <i class="fas fa-link"></i>
-              <a href="${a.meet_link}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Join Meeting</a>
-            </div>
-          ` : ''}
+        ` : ''}
 
-          ${a.patient_notes ? `
-            <div class="appt-notes-box">
-              <strong><i class="fas fa-pen-nib"></i> My Notes:</strong> ${a.patient_notes}
-            </div>
-          ` : ''}
+        ${a.patient_notes ? `
+          <div class="patient-appt-notes">
+            <i class="fas fa-pen-nib"></i>
+            <div><strong>My Notes:</strong> ${a.patient_notes}</div>
+          </div>
+        ` : ''}
+        
+        ${a.doctor_notes ? `
+          <div class="patient-appt-notes" style="background:#f0fdf4;padding:10px;border-radius:8px;border:1px solid #dcfce7;color:#166534;">
+            <i class="fas fa-clipboard-check"></i>
+            <div><strong>Doctor's Notes:</strong> ${a.doctor_notes}</div>
+          </div>
+        ` : ''}
+
+        <div class="patient-appt-footer">
+          <button class="patient-btn-details" onclick="toggleAppointmentDetails(${a.id})">
+            <i class="fas fa-info-circle"></i> View Details
+          </button>
           
-          ${a.doctor_notes ? `
-            <div class="appt-notes-box" style="background:#f0fdf4;border-color:#dcfce7;color:#166534;">
-              <strong><i class="fas fa-clipboard-check"></i> Doctor's Notes:</strong> ${a.doctor_notes}
-            </div>
-          ` : ''}
+          <div style="margin-left: auto; display: flex; gap: 8px;">
+            ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);border:none;" onclick="cancelPatientAppointment(${a.id})"><i class="fas fa-times"></i> Cancel</button>` : ''}
+            ${(a.status === 'pending') ? `<button class="btn" style="background:var(--bg);border:1px solid var(--border);" onclick="openUpdateAppointmentModal(${a.id})"><i class="fas fa-edit"></i> Update</button>` : ''}
+          </div>
         </div>
 
-        <div class="appt-footer">
-          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="cancelPatientAppointment(${a.id})"><i class="fas fa-times"></i> Cancel</button>` : ''}
-          ${(a.status === 'pending') ? `<button class="btn btn-update" onclick="openUpdateAppointmentModal(${a.id})"><i class="fas fa-edit"></i> Update Details</button>` : ''}
-          <button class="btn" style="background:#f8fafc;color:#1f2937;border:1px solid #e2e8f0;" onclick="toggleAppointmentDetails(${a.id})"><i class="fas fa-info-circle"></i> View Details</button>
-        </div>
-
-        <div id="patient-appointment-details-${a.id}" style="display:none;margin-top:15px;padding:15px;border-top:1px solid #f1f5f9;font-size:13px;color:#64748b;line-height:1.6;">
-          <div><i class="fas fa-hospital"></i> <strong>Clinic:</strong> ${a.clinic_name || '-'}</div>
-          <div><i class="fas fa-notes-medical"></i> <strong>Treatment Type:</strong> ${a.type}</div>
-          ${a.prescription ? `<div style="margin-top:8px;padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;color:#1e293b;"><strong>Prescription:</strong><br>${a.prescription}</div>` : ''}
+        <div id="patient-appointment-details-${a.id}" style="display:none;margin-top:15px;padding:15px;background:var(--bg);border-radius:12px;font-size:13px;color:var(--text-light);line-height:1.6;border:1px solid var(--border);">
+          <div style="margin-bottom:8px;"><i class="fas fa-hospital" style="width:16px;margin-right:8px;color:var(--muted)"></i> <strong>Clinic:</strong> ${a.clinic_name || '-'}</div>
+          <div style="margin-bottom:8px;"><i class="fas fa-notes-medical" style="width:16px;margin-right:8px;color:var(--muted)"></i> <strong>Treatment Type:</strong> ${a.type}</div>
+          ${a.prescription ? `<div style="margin-top:12px;padding:12px;background:#fff;border:1px solid var(--border);border-radius:10px;color:var(--text);"><strong><i class="fas fa-prescription-bottle-medical" style="color:var(--primary);margin-right:6px;"></i> Prescription:</strong><br>${a.prescription}</div>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -1907,14 +1905,21 @@ async function initDashboard() {
                        if (json.data.upcoming.length === 0) upCont.innerHTML = '<div class="empty-state">No upcoming appointments.</div>';
                        else {
                            upCont.innerHTML = json.data.upcoming.map(a => `
-                              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
-                                  <div>
-                                      <div style="font-weight:700">Dr. ${a.doctor_name || 'Doctor'}</div>
-                                      <div style="font-size:12px;color:var(--muted)">${a.appointment_date} at ${a.appointment_time}${a.proposed_appointment_date ? ' · <span style="color:#b45309;font-weight:600">New time proposed — check appointments</span>' : ''}</div>
-                                  </div>
-                                  <span class="badge ${a.status==='confirmed'?'badge-success':(a.status==='pending'?'badge-warning':'badge-danger')}">${a.status}</span>
-                              </div>
-                           `).join('');
+                               <div class="patient-appointment-card ${a.status}" style="padding: 16px; margin-bottom: 12px; font-size: 13px;">
+                                   <div class="patient-appt-dr-name" style="font-size: 16px;">Dr. ${a.doctor_name || 'Doctor'}</div>
+                                   <div class="patient-appt-status ${a.status}" style="margin-bottom: 8px;">${a.status}</div>
+                                   <div class="patient-appt-info-row" style="font-size: 12px;">
+                                       <i class="far fa-calendar-alt"></i>
+                                       <span>${a.appointment_date} at ${formatApptTimeDisplay(a.appointment_time)}</span>
+                                   </div>
+                                   ${a.proposed_appointment_date ? `<div style="color:#b45309;font-weight:600;font-size:11px;margin-top:4px;"><i class="fas fa-exclamation-circle"></i> New time proposed — check appointments</div>` : ''}
+                                   <div class="patient-appt-footer" style="margin-top: 12px;">
+                                       <button class="patient-btn-details" style="padding: 8px 16px; font-size: 12px;" onclick="showTab('appointments')">
+                                           <i class="fas fa-calendar-check"></i> Manage
+                                       </button>
+                                   </div>
+                               </div>
+                            `).join('');
                        }
                    }
                }
