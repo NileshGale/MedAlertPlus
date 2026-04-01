@@ -2,7 +2,7 @@
 
 require_once __DIR__ . '/reminder_common.php';
 require_once __DIR__ . '/../config/mail.php';
-require_once __DIR__ . '/../api/twilio_helper.php';
+// WhatsApp disabled: require_once __DIR__ . '/../api/twilio_helper.php';
 
 /**
  * Send due medicine reminders (daily digest email at set time, per-slot WhatsApp, DB log, in-app).
@@ -118,6 +118,7 @@ function executeMedicineReminderDispatch(
                 }
             }
 
+            /* WhatsApp Dispatched Disabled
             $waTo = resolveReminderWhatsapp($rem);
             if (!empty($rem['send_whatsapp']) && $waTo !== '') {
                 $plainWa = "Med Alert Plus — medicine reminder.\n\n"
@@ -132,6 +133,7 @@ function executeMedicineReminderDispatch(
                     echo "WhatsApp: {$rem['medicine_name']} -> {$waTo}\n";
                 }
             }
+            */
 
             $fullTime = $today . ' ' . $slotHi . ':00';
             $log = $pdo->prepare('INSERT INTO medicine_logs (reminder_id, patient_id, scheduled_time, status) VALUES (?, ?, ?, ?)');

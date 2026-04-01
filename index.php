@@ -440,7 +440,7 @@
             <div class="feature-card">
                 <div class="feat-icon fi-2"><i class="fas fa-bell"></i></div>
                 <h3>Smart Reminders</h3>
-                <p>Never miss a dose again. Get personalized medicine reminders via email (daily summary at your time) and WhatsApp on your schedule.</p>
+                <p>Never miss a dose again. Get personalized medicine reminders via email (daily summary at your time) directly to your inbox.</p>
                 <a href="register.php" class="learn-more">Set Reminders <i class="fas fa-chevron-right"></i></a>
             </div>
 

@@ -1445,7 +1445,6 @@ async function loadPatientProfile() {
     gender: json.data.gender || '',
     blood_group: json.data.blood_group || '',
     address: json.data.address || '',
-    whatsapp: json.data.whatsapp_number || '',
     emergency: json.data.emergency_contact || ''
   }).forEach(([k, v]) => {
     const el = form.querySelector(`[name="${k}"]`);

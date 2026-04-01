@@ -464,17 +464,11 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:20px;margin-bottom:12px">
                    <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="send_email" value="1" checked> Email (account email)</label>
-                   <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" name="send_whatsapp" value="1" checked> WhatsApp</label>
                 </div>
-                <div id="emailDailyTimeRow" style="margin-bottom:14px">
+                <div id="emailDailyTimeRow" style="margin-bottom:20px">
                    <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Daily email time</label>
                    <input type="time" name="email_daily_time" id="medicineEmailDailyTime" style="max-width:200px;padding:10px;border:1px solid var(--border);border-radius:8px;">
-                   <p style="font-size:12px;color:var(--primary);margin:8px 0 0;line-height:1.45">One summary email per day is sent at <strong>this</strong> time (not before). Dose times above are listed in the email. WhatsApp still alerts at each dose time.</p>
-                </div>
-                <p style="font-size:12px;color:var(--muted);margin:0 0 16px">WhatsApp uses the number below, or your profile WhatsApp if empty.</p>
-                <div id="whatsappField" style="margin-bottom:20px;">
-                   <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">WhatsApp Number</label>
-                   <input type="text" name="whatsapp_number" placeholder="e.g. +1234567890" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                   <p style="font-size:12px;color:var(--primary);margin:8px 0 0;line-height:1.45">One summary email per day is sent at <strong>this</strong> time (not before). Dose times above are listed in the email.</p>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width:100%">Save Reminder</button>
              </form>
@@ -712,16 +706,10 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                    <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Address</label>
                    <input type="text" name="address" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-                   <div>
-                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">WhatsApp Number</label>
-                      <input type="text" name="whatsapp" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
-                   </div>
-                   <div>
-                      <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Emergency Contact</label>
-                      <input type="text" name="emergency" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
-                   </div>
-                </div>
+                 <div style="margin-bottom:20px">
+                    <label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Emergency Contact</label>
+                    <input type="text" name="emergency" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+                 </div>
                 <button type="submit" class="btn btn-primary">Save Profile</button>
              </form>
           </div>
@@ -837,23 +825,8 @@ function initHealthAnalytics() {
   if (typeof loadHealthAnalytics === 'function') loadHealthAnalytics();
 }
 
-function toggleWhatsAppField() {
-    const chk = document.querySelector('input[name="send_whatsapp"]');
-    const field = document.getElementById('whatsappField');
-    if (chk && field) {
-        field.style.display = chk.checked ? 'block' : 'none';
-        const input = field.querySelector('input');
-        if (input) input.required = chk.checked;
-    }
-}
-
-document.addEventListener('change', (e) => {
-    if (e.target.name === 'send_whatsapp') toggleWhatsAppField();
-});
-
 document.addEventListener('DOMContentLoaded', () => {
     initHealthAnalytics();
-    toggleWhatsAppField();
 });
 function toggleNotifPanel() {
   const p = document.getElementById('notifPanel');

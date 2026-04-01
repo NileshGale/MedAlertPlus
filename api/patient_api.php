@@ -183,8 +183,6 @@ function addMedicine() {
     $end       = ($_POST['end_date'] ?? '') !== '' ? $_POST['end_date'] : null;
     $notes     = trim($_POST['notes'] ?? '');
     $sendEmail = !empty($_POST['send_email']) ? 1 : 0;
-    $sendWa    = !empty($_POST['send_whatsapp']) ? 1 : 0;
-    $waNumber  = trim($_POST['whatsapp_number'] ?? '');
     $emailDaily = null;
     if ($sendEmail) {
         $emailDaily = normalizeEmailDailyTimeForDb(trim($_POST['email_daily_time'] ?? ''));
@@ -204,8 +202,8 @@ function addMedicine() {
 
     ensureReminderCronSchema($pdo);
 
-    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,send_sms,email_daily_time,last_email_digest_date,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,NULL,1)");
-    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$sendWa,$waNumber,$emailDaily]);
+    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,send_sms,email_daily_time,last_email_digest_date,is_active) VALUES (?,?,?,?,?,?,?,?,?,0,NULL,0,?,NULL,1)");
+    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$emailDaily]);
     $newRemId = $pdo->lastInsertId();
 
     // ---- Real-time Notification Trigger ----
@@ -247,8 +245,6 @@ function editMedicine() {
     $end    = ($_POST['end_date'] ?? '') !== '' ? $_POST['end_date'] : null;
     $notes  = trim($_POST['notes'] ?? '');
     $email  = !empty($_POST['send_email']) ? 1 : 0;
-    $wa     = !empty($_POST['send_whatsapp']) ? 1 : 0;
-    $waNumber = trim($_POST['whatsapp_number'] ?? '');
     $emailDaily = null;
     if ($email) {
         $emailDaily = normalizeEmailDailyTimeForDb(trim($_POST['email_daily_time'] ?? ''));
@@ -265,8 +261,8 @@ function editMedicine() {
     }
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
     ensureReminderCronSchema($pdo);
-    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=?,send_sms=0,email_daily_time=?,last_email_digest_date=NULL WHERE id=? AND patient_id=?");
-    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$wa,$waNumber,$emailDaily,$id,$profileId]);
+    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=0,whatsapp_number=NULL,send_sms=0,email_daily_time=?,last_email_digest_date=NULL WHERE id=? AND patient_id=?");
+    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$emailDaily,$id,$profileId]);
     echo json_encode(['success'=>true]);
 }
 
@@ -336,7 +332,6 @@ function updateProfile() {
     $disease   = trim($_POST['disease'] ?? '');
     $address   = trim($_POST['address'] ?? '');
     $phone     = trim($_POST['phone'] ?? '');
-    $whatsapp  = trim($_POST['whatsapp'] ?? '');
     $emergency = trim($_POST['emergency'] ?? '');
     
     if (!$name) { echo json_encode(['success'=>false, 'message'=>'Name is required.']); return; }
@@ -364,8 +359,8 @@ function updateProfile() {
 
     $pdo->prepare("UPDATE users SET name=?, phone=? WHERE id=?")->execute([$name, $phone, $userId]);
     
-    $sql = "UPDATE patients SET age=?, gender=?, blood_group=?, disease=?, address=?, whatsapp_number=?, emergency_contact=?";
-    $params = [$age, $gender, $blood, $disease, $address, $whatsapp, $emergency];
+    $sql = "UPDATE patients SET age=?, gender=?, blood_group=?, disease=?, address=?, emergency_contact=?";
+    $params = [$age, $gender, $blood, $disease, $address, $emergency];
     if ($profileImagePath) {
         $sql .= ", profile_image=?";
         $params[] = $profileImagePath;
