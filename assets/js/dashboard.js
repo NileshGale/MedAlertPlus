@@ -277,6 +277,31 @@ function addTimeField() {
   container.appendChild(div);
 }
 
+function selectMedType(type, el) {
+  document.getElementById('medTypeInput').value = type;
+  document.querySelectorAll('.med-type-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function selectMedColor(color, el) {
+  document.getElementById('medColorInput').value = color;
+  document.querySelectorAll('.color-dot').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function toggleMedInstr(instr, el) {
+  const input = document.getElementById('medInstrInput');
+  let current = input.value ? input.value.split(', ') : [];
+  if (current.includes(instr)) {
+    current = current.filter(i => i !== instr);
+    el.classList.remove('active');
+  } else {
+    current.push(instr);
+    el.classList.add('active');
+  }
+  input.value = current.join(', ');
+}
+
 const medForm = document.getElementById('medicineForm');
 if (medForm) {
   const emailDailyRow = document.getElementById('emailDailyTimeRow');
@@ -291,6 +316,12 @@ if (medForm) {
     e.preventDefault();
     const formData = new FormData(medForm);
     const times = Array.from(document.querySelectorAll('input[name="times[]"]')).map(i => i.value);
+    
+    // Automatically set start date to today if not set
+    if (!formData.get('start_date')) {
+      formData.set('start_date', new Date().toISOString().split('T')[0]);
+    }
+
     const emailDailyIn = document.getElementById('medicineEmailDailyTime');
     if (emailSendCb?.checked && emailDailyIn && !emailDailyIn.value && times[0]) {
       emailDailyIn.value = times[0].slice(0, 5);
@@ -328,22 +359,71 @@ async function loadMedicines() {
     if (data.success) {
       if (data.data.length === 0) { list.innerHTML = '<div class="empty-state">No reminders set.</div>'; return; }
       const summaryHtml = document.getElementById('adherenceSummary')?.outerHTML || '';
-      list.innerHTML = data.data.map(m => `
-        <div style="padding:15px;border:1px solid var(--border);border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-weight:700">${m.medicine_name}</div>
-            <div style="font-size:12px;color:var(--muted)">${m.dosage} · ${m.frequency} · Times: ${JSON.parse(m.reminder_times).join(', ')}${m.send_email && m.email_daily_time ? ` · Daily email @ ${String(m.email_daily_time).slice(0, 5)}` : ''}</div>
-            <div style="font-size:12px;margin-top:4px;color:${m.today_status === 'taken' ? '#166534' : (m.today_status === 'skipped' ? '#991b1b' : 'var(--muted)')}">
-              Today: ${m.today_status ? m.today_status.toUpperCase() : 'Not marked'}
+      list.innerHTML = data.data.map(m => {
+        let typeIcon = 'fa-pills';
+        if (m.medicine_type === 'syrup') typeIcon = 'fa-prescription-bottle';
+        else if (m.medicine_type === 'capsule') typeIcon = 'fa-capsules';
+        else if (m.medicine_type === 'injection') typeIcon = 'fa-syringe';
+
+        const color = m.color_tag || '#3b82f6';
+        const timesArr = JSON.parse(m.reminder_times || '[]');
+        
+        let courseInfo = '';
+        if (m.start_date) {
+            const start = new Date(m.start_date);
+            const today = new Date();
+            const diffTime = Math.abs(today - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            courseInfo = `Day ${diffDays}`;
+            if (m.end_date) {
+                const end = new Date(m.end_date);
+                const totalTime = Math.abs(end - start);
+                const totalDays = Math.ceil(totalTime / (1000 * 60 * 60 * 24));
+                courseInfo += ` of ${totalDays}`;
+            }
+        }
+
+        return `
+        <div style="padding:16px; border:1px solid var(--border); border-radius:16px; margin-bottom:16px; background:var(--card); position:relative; overflow:hidden; transition:0.3s;" onmouseover="this.style.borderColor='${color}'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="position:absolute; top:0; left:0; height:100%; width:4px; background:${color}"></div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:15px;">
+            <div style="display:flex; gap:15px; align-items:flex-start;">
+              <div style="width:44px; height:44px; border-radius:10px; background:${color}15; color:${color}; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
+                <i class="fas ${typeIcon}"></i>
+              </div>
+              <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="font-weight:750; font-size:16px; color:var(--text);">${m.medicine_name}</div>
+                    ${courseInfo ? `<span style="font-size:10px; font-weight:700; background:var(--bg); padding:2px 8px; border-radius:10px; color:var(--muted);">${courseInfo}</span>` : ''}
+                </div>
+                <div style="font-size:13px; color:var(--muted); margin-top:2px;">
+                    <strong>${m.dosage}</strong> · ${m.frequency.toUpperCase()}
+                </div>
+                
+                <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;">
+                    ${timesArr.map(t => `<span style="font-size:11px; font-weight:700; color:var(--primary); background:var(--primary-light); padding:2px 8px; border-radius:6px;"><i class="far fa-clock"></i> ${t}</span>`).join('')}
+                    ${m.instructions ? `<span style="font-size:11px; font-weight:700; color:#0369a1; background:#f0f9ff; padding:2px 8px; border-radius:6px;"><i class="fas fa-info-circle"></i> ${m.instructions}</span>` : ''}
+                </div>
+
+                <div style="margin-top:10px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px; color:${m.today_status === 'taken' ? 'var(--success)' : (m.today_status === 'skipped' ? 'var(--danger)' : 'var(--muted)')}">
+                  <i class="fas fa-${m.today_status === 'taken' ? 'check-circle' : (m.today_status === 'skipped' ? 'times-circle' : 'circle')}"></i>
+                  Today: ${m.today_status ? m.today_status.toUpperCase() : 'NOT MARKED YET'}
+                </div>
+              </div>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <button class="btn" onclick="markMedicineAdherence(${m.id}, 'taken')" style="background:#ecfdf5; color:#166534; border:none; padding:8px 12px; font-size:12px;"><i class="fas fa-check"></i> Taken</button>
+              <button class="btn" onclick="markMedicineAdherence(${m.id}, 'skipped')" style="background:#fff7ed; color:#92400e; border:none; padding:8px 12px; font-size:12px;"><i class="fas fa-forward"></i> Skip</button>
+              <button class="btn" onclick="deleteMedicine(${m.id}, '${m.medicine_name.replace(/'/g, "\\'")}')" style="background:rgba(239,68,68,0.05); color:var(--danger); border:none; width:100%;"><i class="fas fa-trash"></i></button>
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-            <button class="btn" onclick="markMedicineAdherence(${m.id}, 'taken')" style="background:#ecfdf5;color:#166534;"><i class="fas fa-check"></i> Taken</button>
-            <button class="btn" onclick="markMedicineAdherence(${m.id}, 'skipped')" style="background:#fff7ed;color:#92400e;"><i class="fas fa-forward"></i> Skipped</button>
-            <button class="btn" onclick="deleteMedicine(${m.id}, '${m.medicine_name.replace(/'/g, "\\'")}')" style="color:var(--danger);background:rgba(239,68,68,0.1)"><i class="fas fa-trash"></i></button>
-          </div>
+
+          ${m.notes ? `<div style="margin-top:12px; padding:10px; background:var(--bg); border-radius:8px; font-size:12px; color:var(--text-light); font-style:italic;">"${m.notes}"</div>` : ''}
         </div>
-      `).join('');
+        `;
+      }).join('');
       if (summaryHtml) {
         list.innerHTML = summaryHtml + list.innerHTML;
       }
