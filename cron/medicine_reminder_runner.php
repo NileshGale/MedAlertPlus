@@ -1,12 +1,14 @@
 <?php
 
 require_once __DIR__ . '/reminder_common.php';
+require_once __DIR__ . '/../config/mail.php';
+require_once __DIR__ . '/../api/twilio_helper.php';
 
 /**
- * Send due medicine reminders (email, WhatsApp, SMS, DB log, in-app notification).
- * Uses a time window so delivery still works if cron runs a few minutes late.
+ * Send due medicine reminders (daily digest email at set time, per-slot WhatsApp, DB log, in-app).
+ * Email with email_daily_time sends once per day only when local time is within the window (not before).
  *
- * @return int Number of dispatches (one per medicine time slot)
+ * @return int Number of dispatches (digest emails + per-slot channels)
  */
 function executeMedicineReminderDispatch(
     PDO $pdo,
@@ -46,6 +48,48 @@ function executeMedicineReminderDispatch(
             continue;
         }
 
+        $emailDailyRaw = isset($rem['email_daily_time']) && $rem['email_daily_time'] !== null && $rem['email_daily_time'] !== ''
+            ? (string) $rem['email_daily_time']
+            : null;
+
+        if (!empty($rem['send_email']) && !empty($rem['email']) && $emailDailyRaw !== null) {
+            if (reminderSlotIsDueWithinWindow($emailDailyRaw, $timezone, $windowMinutes)) {
+                $lastDigest = $rem['last_email_digest_date'] ?? null;
+                if ($lastDigest !== $today) {
+                    $lines = [];
+                    foreach ($times as $tr) {
+                        $hi = reminderSlotToHi((string) $tr);
+                        if ($hi === '') {
+                            continue;
+                        }
+                        $lines[] = date('h:i A', strtotime($today . ' ' . $hi . ':00'));
+                    }
+                    if ($lines !== []) {
+                        $timesHtml = '<ul style="margin:8px 0;padding-left:20px;"><li>'
+                            . implode('</li><li>', array_map(static function ($l) {
+                                return htmlspecialchars($l, ENT_QUOTES, 'UTF-8');
+                            }, $lines))
+                            . '</li></ul>';
+                        $freqLabel = ucfirst((string) ($rem['frequency'] ?? 'daily'));
+                        if (sendMedicineDailyDigestEmail(
+                            $rem['email'],
+                            $rem['patient_name'],
+                            $rem['medicine_name'],
+                            $rem['dosage'],
+                            $freqLabel,
+                            $timesHtml
+                        )) {
+                            $pdo->prepare('UPDATE medicine_reminders SET last_email_digest_date = ? WHERE id = ?')->execute([$today, $rem['id']]);
+                            if ($verbose) {
+                                echo "Daily email digest: {$rem['medicine_name']}\n";
+                            }
+                            $fired++;
+                        }
+                    }
+                }
+            }
+        }
+
         foreach ($times as $timeRaw) {
             $slotHi = reminderSlotToHi((string) $timeRaw);
             if ($slotHi === '' || !reminderSlotIsDueWithinWindow((string) $timeRaw, $timezone, $windowMinutes)) {
@@ -64,12 +108,13 @@ function executeMedicineReminderDispatch(
             $timePretty = date('h:i A', strtotime($today . ' ' . $slotHi . ':00'));
             $status = 'sent';
 
-            if (!empty($rem['send_email']) && !empty($rem['email'])) {
+            $usePerSlotEmail = !empty($rem['send_email']) && !empty($rem['email']) && $emailDailyRaw === null;
+            if ($usePerSlotEmail) {
                 if (!sendMedicineReminder($rem['email'], $rem['patient_name'], $rem['medicine_name'], $rem['dosage'], $timePretty)) {
                     $status = 'failed';
                 }
                 if ($verbose) {
-                    echo "Email: {$rem['medicine_name']} -> {$rem['email']}\n";
+                    echo "Email (per-slot): {$rem['medicine_name']} -> {$rem['email']}\n";
                 }
             }
 
@@ -85,23 +130,6 @@ function executeMedicineReminderDispatch(
                 }
                 if ($verbose) {
                     echo "WhatsApp: {$rem['medicine_name']} -> {$waTo}\n";
-                }
-            }
-
-            $phone = trim((string) ($rem['phone'] ?? ''));
-            if (!empty($rem['send_sms']) && $phone !== '') {
-                if (!isTwilioSmsConfigured()) {
-                    if ($verbose) {
-                        echo "SMS skipped (set TWILIO_SMS_FROM): {$rem['medicine_name']}\n";
-                    }
-                } else {
-                    $plainSms = 'Med Alert: Take ' . $rem['medicine_name'] . ' (' . $rem['dosage'] . ') now. Time ' . $timePretty . '.';
-                    if (!sendSmsMessage($phone, $plainSms)) {
-                        $status = 'failed';
-                    }
-                    if ($verbose) {
-                        echo "SMS: {$rem['medicine_name']} -> {$phone}\n";
-                    }
                 }
             }
 

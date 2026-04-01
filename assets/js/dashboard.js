@@ -55,6 +55,28 @@ function showConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', 
   });
 }
 
+/** Patient overview stat cards → tab + optional appointment filter */
+function patientOverviewStatGo(target) {
+  if (target === 'medicines') {
+    showTab('medicines');
+    return;
+  }
+  if (target === 'symptoms') {
+    showTab('symptoms');
+    return;
+  }
+  const statusSel = document.getElementById('patientAppointmentStatusFilter');
+  if (target === 'appointments-pending') {
+    if (statusSel) statusSel.value = 'pending';
+    showTab('appointments');
+    return;
+  }
+  if (target === 'appointments-all') {
+    if (statusSel) statusSel.value = 'all';
+    showTab('appointments');
+  }
+}
+
 // ---- Tab Navigation ----
 function showTab(name) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -76,6 +98,8 @@ function showTab(name) {
     patients: ['Manage Patients', 'All registered patients'],
     registrations: ['Recent Registrations', 'New user registrations with filters'],
     schedule: ['My Schedule', 'Set your weekly availability'],
+    admin_patients: ['All patients', 'Directory — update or remove accounts'],
+    admin_doctors: ['All doctors', 'Directory — update or remove accounts'],
   };
   const [title, sub] = titles[name] || ['Dashboard', ''];
   const titleEl = document.getElementById('pageTitle');
@@ -108,6 +132,9 @@ function showTab(name) {
   }
   if (name === 'schedule' && document.getElementById('doctorScheduleRows')) loadDoctorSchedule();
   if (name === 'patients' && document.getElementById('doctorPatientsList')) loadDoctorPatients();
+  if (name === 'approvals' && document.getElementById('adminApprovalsTableBody')) loadAdminApprovals();
+  if (name === 'admin_patients' && document.getElementById('adminPatientsTableBody')) loadAdminPatientsList();
+  if (name === 'admin_doctors' && document.getElementById('adminDoctorsTableBody')) loadAdminDoctorsList();
 }
 
 // ---- Sidebar Toggle ----
@@ -125,6 +152,18 @@ function showToast(message, type = 'info') {
   toast.innerHTML = `<i class="fas fa-${icons[type] || 'info-circle'}"></i> ${message}`;
   container.appendChild(toast);
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(30px)'; setTimeout(() => toast.remove(), 300); }, 3500);
+}
+
+function formatApptTimeDisplay(t) {
+  if (t == null || t === '') return '';
+  const s = String(t);
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
 }
 
 // ---- Alert Helper ----
@@ -235,10 +274,22 @@ function addTimeField() {
 
 const medForm = document.getElementById('medicineForm');
 if (medForm) {
+  const emailDailyRow = document.getElementById('emailDailyTimeRow');
+  const emailSendCb = medForm.querySelector('input[name="send_email"]');
+  const syncEmailDailyRow = () => {
+    if (emailDailyRow) emailDailyRow.style.display = emailSendCb?.checked ? 'block' : 'none';
+  };
+  emailSendCb?.addEventListener('change', syncEmailDailyRow);
+  syncEmailDailyRow();
+
   medForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(medForm);
     const times = Array.from(document.querySelectorAll('input[name="times[]"]')).map(i => i.value);
+    const emailDailyIn = document.getElementById('medicineEmailDailyTime');
+    if (emailSendCb?.checked && emailDailyIn && !emailDailyIn.value && times[0]) {
+      emailDailyIn.value = times[0].slice(0, 5);
+    }
     formData.set('reminder_times', JSON.stringify(times));
     
     try {
@@ -247,6 +298,10 @@ if (medForm) {
       if (data.success) {
         showToast(data.message, 'success');
         medForm.reset();
+        const emailDaily = document.getElementById('medicineEmailDailyTime');
+        if (emailDaily) emailDaily.value = '';
+        const emailCb = medForm.querySelector('input[name="send_email"]');
+        if (emailCb) emailCb.checked = true;
         // Reset time fields to one
         document.getElementById('reminderTimesContainer').innerHTML = `<label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Reminder Times (Set Timers)</label>
                    <div style="display:flex;gap:10px;margin-bottom:10px">
@@ -272,7 +327,7 @@ async function loadMedicines() {
         <div style="padding:15px;border:1px solid var(--border);border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:700">${m.medicine_name}</div>
-            <div style="font-size:12px;color:var(--muted)">${m.dosage} · ${m.frequency} · Times: ${JSON.parse(m.reminder_times).join(', ')}</div>
+            <div style="font-size:12px;color:var(--muted)">${m.dosage} · ${m.frequency} · Times: ${JSON.parse(m.reminder_times).join(', ')}${m.send_email && m.email_daily_time ? ` · Daily email @ ${String(m.email_daily_time).slice(0, 5)}` : ''}</div>
             <div style="font-size:12px;margin-top:4px;color:${m.today_status === 'taken' ? '#166534' : (m.today_status === 'skipped' ? '#991b1b' : 'var(--muted)')}">
               Today: ${m.today_status ? m.today_status.toUpperCase() : 'Not marked'}
             </div>
@@ -330,6 +385,115 @@ async function markMedicineAdherence(reminderId, status) {
   }
 }
 
+async function loadPatientNotifications() {
+  const list = document.getElementById('notifList');
+  const badge = document.getElementById('notifBadge');
+  const deleteAllBtn = document.getElementById('notifDeleteAllBtn');
+  if (!list) return;
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=patient_notifications');
+    const json = await res.json();
+    if (!json.success || !json.data || json.data.length === 0) {
+      list.innerHTML = '<div class="empty-state">No notifications</div>';
+      if (badge) badge.style.display = 'none';
+      if (deleteAllBtn) deleteAllBtn.style.display = 'none';
+      return;
+    }
+    if (deleteAllBtn) deleteAllBtn.style.display = '';
+    const unread = json.data.filter(n => !Number(n.is_read)).length;
+    if (badge) {
+      badge.style.display = unread > 0 ? 'flex' : 'none';
+      badge.textContent = unread > 9 ? '9+' : String(unread);
+    }
+    list.innerHTML = json.data.map(n => {
+      const unreadClass = !Number(n.is_read) ? ' unread' : '';
+      const apptId = Number(n.appointment_id) || 0;
+      const nid = Number(n.id);
+      const ctaHtml = (n.cta === 'reschedule' && apptId) ? `
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" style="font-size:12px;padding:6px 12px;" onclick="event.stopPropagation();patientRespondReschedule(${apptId},'accept');">Accept</button>
+          <button type="button" class="btn" style="font-size:12px;padding:6px 12px;background:rgba(239,68,68,0.1);color:var(--danger);" onclick="event.stopPropagation();patientRespondReschedule(${apptId},'reject');">Reject</button>
+        </div>` : '';
+      return `
+      <div class="notif-item${unreadClass}" style="flex-direction:column;align-items:stretch;cursor:default;">
+        <div style="width:100%;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:700;font-size:13px;">${escapeHtml(n.title)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;">${escapeHtml(n.message)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px;">${escapeHtml(n.created_at)}</div>
+          </div>
+          <button type="button" class="notif-delete-one" title="Delete" onclick="event.stopPropagation();patientDeleteNotification(${nid});" style="flex-shrink:0;margin-top:0;">Delete</button>
+        </div>
+        ${ctaHtml}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="empty-state">Could not load notifications</div>';
+    if (deleteAllBtn) deleteAllBtn.style.display = 'none';
+  }
+}
+
+async function patientDeleteNotification(notifId) {
+  if (!notifId) return;
+  try {
+    const res = await fetch('../api/patient_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `action=delete_notification&id=${encodeURIComponent(String(notifId))}`
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast('Notification removed', 'success');
+      loadPatientNotifications();
+    } else showToast(json.message || 'Could not delete', 'error');
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
+
+async function patientDeleteAllNotifications() {
+  if (!await showConfirm('Delete all notifications? This cannot be undone.', { confirmText: 'Delete all', type: 'danger' })) return;
+  try {
+    const res = await fetch('../api/patient_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'action=delete_all_notifications'
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast('All notifications cleared', 'success');
+      loadPatientNotifications();
+    } else showToast(json.message || 'Could not delete', 'error');
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
+
+async function patientRespondReschedule(apptId, decision) {
+  if (!['accept', 'reject'].includes(decision)) return;
+  const isAcc = decision === 'accept';
+  const detail = isAcc ? 'Your appointment will move to the proposed date and time.' : 'You will keep your original appointment.';
+  if (!await showConfirm(`${isAcc ? 'Accept' : 'Reject'} the doctor\'s proposed new time? ${detail}`, { confirmText: isAcc ? 'Accept' : 'Reject', cancelText: 'Cancel', type: isAcc ? 'info' : 'warning' })) return;
+  const action = isAcc ? 'accept_reschedule' : 'reject_reschedule';
+  try {
+    const res = await fetch('../api/patient_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `action=${action}&id=${apptId}`
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast(isAcc ? 'Appointment updated to the new time.' : 'You kept the original appointment time.', 'success');
+      loadPatientAppointments();
+      loadPatientNotifications();
+    } else {
+      showToast(json.message || 'Action failed', 'error');
+    }
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
+
 async function loadPatientAppointments() {
   const container = document.getElementById('patientAppointmentsList');
   if (!container) return;
@@ -347,7 +511,17 @@ async function loadPatientAppointments() {
       container.innerHTML = '<div class="empty-state">No appointments match selected filters.</div>';
       return;
     }
-    container.innerHTML = filtered.map(a => `
+    container.innerHTML = filtered.map(a => {
+      const propTime = a.proposed_appointment_time ? formatApptTimeDisplay(a.proposed_appointment_time) : '';
+      const proposeBlock = a.proposed_appointment_date ? `
+        <div style="margin-top:10px;padding:10px;background:#fffbeb;border-radius:8px;border:1px solid #fcd34d;font-size:13px;">
+          <strong style="color:#92400e">Doctor proposed a new time:</strong> ${a.proposed_appointment_date} ${propTime || a.proposed_appointment_time}
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" onclick="patientRespondReschedule(${a.id},'accept')">Accept</button>
+            <button type="button" class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="patientRespondReschedule(${a.id},'reject')">Reject</button>
+          </div>
+        </div>` : '';
+      return `
       <div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
           <div>
@@ -359,6 +533,7 @@ async function loadPatientAppointments() {
         <div style="margin-top:10px;font-size:13px;color:var(--text-light);">
           <i class="fas fa-calendar"></i> ${a.appointment_date} ${a.appointment_time} · ${a.type}
         </div>
+        ${proposeBlock}
         ${a.meet_link ? `<div style="margin-top:8px;font-size:13px;"><a href="${a.meet_link}" target="_blank" rel="noopener">Join Meet Link</a></div>` : ''}
         ${a.doctor_notes ? `<div style="margin-top:8px;font-size:13px;"><strong>Doctor Notes:</strong> ${a.doctor_notes}</div>` : ''}
         ${a.prescription ? `<div style="margin-top:6px;font-size:13px;"><strong>Prescription:</strong> ${a.prescription}</div>` : ''}
@@ -371,8 +546,8 @@ async function loadPatientAppointments() {
           <div style="font-size:13px;"><strong>Type:</strong> ${a.type}</div>
           <div style="font-size:13px;"><strong>Status:</strong> ${a.status}</div>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     container.innerHTML = '<div class="empty-state">Could not load appointments.</div>';
   }
@@ -733,15 +908,59 @@ function manageAppointment(id) {
 }
 
 function manageMeetLink(id, current) {
-   const link = prompt('Enter Google Meet Link:', current || 'https://meet.google.com/');
+   const raw = current && current !== 'null' ? decodeURIComponent(current) : 'https://meet.google.com/';
+   const link = prompt('Enter Google Meet Link:', raw);
    if (!link) return;
    fetch('../api/doctor_api.php', {
       method: 'POST',
       headers: {'Content-Type':'application/x-www-form-urlencoded'},
       body: `action=save_meet_link&id=${id}&link=${encodeURIComponent(link)}`
    }).then(r => r.json()).then(d => {
-      if (d.success) showToast('Meet link updated!', 'success');
+      if (d.success) { showToast('Meet link updated!', 'success'); if (typeof loadDoctorAppointments === 'function') loadDoctorAppointments(); }
    });
+}
+
+function openRescheduleModal(apptId, currentDate, currentTime) {
+  document.getElementById('rescheduleOverlay')?.remove();
+  const tVal = formatApptTimeDisplay(currentTime);
+  const overlay = document.createElement('div');
+  overlay.id = 'rescheduleOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:400px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.15);font-family:inherit">
+      <h3 style="font-size:18px;font-weight:700;margin-bottom:6px;color:#1e293b">Propose new time</h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px;line-height:1.5">The patient receives a notification and must accept before the schedule changes.</p>
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Date</label>
+      <input type="date" id="rescheduleDateInput" value="${currentDate || ''}" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Time</label>
+      <input type="time" id="rescheduleTimeInput" value="${tVal}" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;font-family:inherit" />
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button type="button" id="rescheduleCancelBtn" class="btn" style="background:#f1f5f9;color:#475569">Cancel</button>
+        <button type="button" id="rescheduleSaveBtn" class="btn btn-primary">Send to patient</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#rescheduleCancelBtn').addEventListener('click', close);
+  const dateIn = overlay.querySelector('#rescheduleDateInput');
+  const today = new Date().toISOString().slice(0, 10);
+  if (dateIn) dateIn.min = today;
+  overlay.querySelector('#rescheduleSaveBtn').addEventListener('click', async () => {
+    const date = overlay.querySelector('#rescheduleDateInput').value;
+    const time = overlay.querySelector('#rescheduleTimeInput').value;
+    if (!date || !time) { showToast('Pick date and time', 'warning'); return; }
+    const body = new URLSearchParams({ action: 'propose_reschedule', id: String(apptId), date, time }).toString();
+    try {
+      const res = await fetch('../api/doctor_api.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      const json = await res.json();
+      if (json.success) {
+        showToast('Patient notified. Awaiting their response.', 'success');
+        close();
+        loadDoctorAppointments();
+      } else showToast(json.message || 'Failed', 'error');
+    } catch (e) { showToast('Server error', 'error'); }
+  });
 }
 
 // ---- Admin: Actions ----
@@ -830,6 +1049,260 @@ async function loadAdminApprovals() {
           }
       }
    } catch (e) { console.error("Could not load pending doctors", e); }
+}
+
+let _adminPatientListCache = [];
+let _adminDoctorListCache = [];
+
+async function refreshAdminOverviewStats() {
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=initial_load');
+    const json = await res.json();
+    if (!json.success || !json.data?.stats) return;
+    const st = json.data.stats;
+    const p = Number(st.patients ?? 0);
+    const d = Number(st.doctors ?? 0);
+    const pend = st.pending ?? 0;
+    const su = document.getElementById('stat-users');
+    const sd = document.getElementById('stat-doctors');
+    const sp = document.getElementById('stat-pending');
+    const spo = document.getElementById('stat-pending-overview');
+    if (su) su.textContent = p;
+    if (sd) sd.textContent = d;
+    if (sp) sp.textContent = pend;
+    if (spo) spo.textContent = pend;
+    if (typeof drawUserDistributionChart === 'function') drawUserDistributionChart(p, d);
+  } catch (e) {}
+}
+
+async function loadAdminPatientsList() {
+  const tbody = document.getElementById('adminPatientsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Loading...</td></tr>';
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=admin_patients_list');
+    const json = await res.json();
+    if (!json.success) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Could not load patients.</td></tr>';
+      _adminPatientListCache = [];
+      return;
+    }
+    if (!json.data || json.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No patients found.</td></tr>';
+      _adminPatientListCache = [];
+      return;
+    }
+    _adminPatientListCache = json.data;
+    tbody.innerHTML = json.data.map((p) => `
+      <tr>
+        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td>${escapeHtml(p.email)}</td>
+        <td>${escapeHtml(p.phone || '—')}</td>
+        <td><span class="badge ${p.status === 'active' ? 'badge-success' : 'badge-warning'}">${escapeHtml(p.status)}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(p.created_at)}</td>
+        <td style="white-space:nowrap">
+          <button type="button" class="btn btn-primary btn-sm" onclick="adminOpenPatientEditor(${Number(p.user_id)})">Update profile</button>
+          <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;margin-left:6px" onclick="adminDeletePatientConfirm(${Number(p.user_id)})">Delete</button>
+        </td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load.</td></tr>';
+    _adminPatientListCache = [];
+  }
+}
+
+async function loadAdminDoctorsList() {
+  const tbody = document.getElementById('adminDoctorsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Loading...</td></tr>';
+  try {
+    const res = await fetch('../api/dashboard_data.php?type=admin_doctors_list');
+    const json = await res.json();
+    if (!json.success) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Could not load doctors.</td></tr>';
+      _adminDoctorListCache = [];
+      return;
+    }
+    if (!json.data || json.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No doctors found.</td></tr>';
+      _adminDoctorListCache = [];
+      return;
+    }
+    _adminDoctorListCache = json.data;
+    tbody.innerHTML = json.data.map((d) => `
+      <tr>
+        <td><strong>${escapeHtml(d.name)}</strong></td>
+        <td>${escapeHtml(d.email)}</td>
+        <td>${escapeHtml(d.phone || '—')}</td>
+        <td>${escapeHtml(d.specialization || '—')}</td>
+        <td><span class="badge ${d.approval_status === 'approved' ? 'badge-success' : (d.approval_status === 'pending' ? 'badge-warning' : 'badge-danger')}">${escapeHtml(d.approval_status)}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(d.created_at)}</td>
+        <td style="white-space:nowrap">
+          <button type="button" class="btn btn-primary btn-sm" onclick="adminOpenDoctorEditor(${Number(d.user_id)})">Update profile</button>
+          <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;margin-left:6px" onclick="adminDeleteDoctorConfirm(${Number(d.user_id)})">Delete</button>
+        </td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load.</td></tr>';
+    _adminDoctorListCache = [];
+  }
+}
+
+function adminOpenPatientEditor(userId) {
+  const p = _adminPatientListCache.find((x) => Number(x.user_id) === Number(userId));
+  if (!p) return;
+  document.getElementById('adminPatientModalOverlay')?.remove();
+  const g = p.gender || '';
+  const ageVal = p.age != null && p.age !== '' ? String(p.age) : '';
+  const overlay = document.createElement('div');
+  overlay.id = 'adminPatientModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.15);font-family:inherit">
+      <h3 style="font-size:18px;font-weight:700;margin-bottom:16px;color:#1e293b">Update patient</h3>
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Name</label>
+      <input type="text" id="admPatName" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Email</label>
+      <input type="email" id="admPatEmail" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Phone</label>
+      <input type="text" id="admPatPhone" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Age</label>
+      <input type="number" id="admPatAge" min="0" max="130" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Gender</label>
+      <select id="admPatGender" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;font-family:inherit">
+        <option value="">—</option>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+        <option value="other">Other</option>
+      </select>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button type="button" id="admPatCancel" class="btn btn-sm" style="background:#f1f5f9;color:#475569">Cancel</button>
+        <button type="button" id="admPatSave" class="btn btn-primary btn-sm">Save &amp; email user</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#admPatName').value = p.name || '';
+  overlay.querySelector('#admPatEmail').value = p.email || '';
+  overlay.querySelector('#admPatPhone').value = p.phone || '';
+  if (ageVal !== '') overlay.querySelector('#admPatAge').value = ageVal;
+  overlay.querySelector('#admPatGender').value = g;
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#admPatCancel').addEventListener('click', close);
+  overlay.querySelector('#admPatSave').addEventListener('click', async () => {
+    const body = new URLSearchParams({
+      action: 'admin_update_patient',
+      user_id: String(p.user_id),
+      name: overlay.querySelector('#admPatName').value.trim(),
+      email: overlay.querySelector('#admPatEmail').value.trim(),
+      phone: overlay.querySelector('#admPatPhone').value.trim(),
+      age: overlay.querySelector('#admPatAge').value,
+      gender: overlay.querySelector('#admPatGender').value
+    }).toString();
+    try {
+      const res = await fetch('../api/admin_api.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      const json = await res.json();
+      if (json.success) {
+        showToast(json.message || 'Saved', 'success');
+        close();
+        await loadAdminPatientsList();
+        await refreshAdminOverviewStats();
+      } else showToast(json.message || 'Failed', 'error');
+    } catch (e) {
+      showToast('Server error', 'error');
+    }
+  });
+}
+
+function adminOpenDoctorEditor(userId) {
+  const d = _adminDoctorListCache.find((x) => Number(x.user_id) === Number(userId));
+  if (!d) return;
+  document.getElementById('adminDoctorModalOverlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'adminDoctorModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.15);font-family:inherit">
+      <h3 style="font-size:18px;font-weight:700;margin-bottom:16px;color:#1e293b">Update doctor</h3>
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Name</label>
+      <input type="text" id="admDocName" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Email</label>
+      <input type="email" id="admDocEmail" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Phone</label>
+      <input type="text" id="admDocPhone" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Specialization</label>
+      <input type="text" id="admDocSpec" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-family:inherit" />
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Clinic name</label>
+      <input type="text" id="admDocClinic" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;font-family:inherit" />
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button type="button" id="admDocCancel" class="btn btn-sm" style="background:#f1f5f9;color:#475569">Cancel</button>
+        <button type="button" id="admDocSave" class="btn btn-primary btn-sm">Save &amp; email user</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#admDocName').value = d.name || '';
+  overlay.querySelector('#admDocEmail').value = d.email || '';
+  overlay.querySelector('#admDocPhone').value = d.phone || '';
+  overlay.querySelector('#admDocSpec').value = d.specialization || '';
+  overlay.querySelector('#admDocClinic').value = d.clinic_name || '';
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#admDocCancel').addEventListener('click', close);
+  overlay.querySelector('#admDocSave').addEventListener('click', async () => {
+    const body = new URLSearchParams({
+      action: 'admin_update_doctor',
+      user_id: String(d.user_id),
+      name: overlay.querySelector('#admDocName').value.trim(),
+      email: overlay.querySelector('#admDocEmail').value.trim(),
+      phone: overlay.querySelector('#admDocPhone').value.trim(),
+      specialization: overlay.querySelector('#admDocSpec').value.trim(),
+      clinic_name: overlay.querySelector('#admDocClinic').value.trim()
+    }).toString();
+    try {
+      const res = await fetch('../api/admin_api.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      const json = await res.json();
+      if (json.success) {
+        showToast(json.message || 'Saved', 'success');
+        close();
+        await loadAdminDoctorsList();
+        await refreshAdminOverviewStats();
+      } else showToast(json.message || 'Failed', 'error');
+    } catch (e) {
+      showToast('Server error', 'error');
+    }
+  });
+}
+
+async function adminDeletePatientConfirm(userId) {
+  if (!await showConfirm('Delete this patient account? An email will be sent to their address. This cannot be undone.', { confirmText: 'Delete account', type: 'danger' })) return;
+  const body = new URLSearchParams({ action: 'admin_delete_patient', user_id: String(userId) }).toString();
+  try {
+    const res = await fetch('../api/admin_api.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    const json = await res.json();
+    if (json.success) {
+      showToast(json.message || 'Removed', 'success');
+      await loadAdminPatientsList();
+      await refreshAdminOverviewStats();
+    } else showToast(json.message || 'Failed', 'error');
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
+
+async function adminDeleteDoctorConfirm(userId) {
+  if (!await showConfirm('Delete this doctor account? An email will be sent to their address. This cannot be undone.', { confirmText: 'Delete account', type: 'danger' })) return;
+  const body = new URLSearchParams({ action: 'admin_delete_doctor', user_id: String(userId) }).toString();
+  try {
+    const res = await fetch('../api/admin_api.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    const json = await res.json();
+    if (json.success) {
+      showToast(json.message || 'Removed', 'success');
+      await loadAdminDoctorsList();
+      await refreshAdminOverviewStats();
+    } else showToast(json.message || 'Failed', 'error');
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
 }
 
 async function loadPatientReports() {
@@ -936,7 +1409,10 @@ async function loadDoctorAppointments() {
       container.innerHTML = '<div class="empty-state">No appointments found.</div>';
       return;
     }
-    container.innerHTML = json.data.map(a => `
+    container.innerHTML = json.data.map(a => {
+      const timeShort = formatApptTimeDisplay(a.appointment_time);
+      const propTime = a.proposed_appointment_time ? formatApptTimeDisplay(a.proposed_appointment_time) : '';
+      return `
       <div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;gap:10px;">
           <div>
@@ -948,17 +1424,21 @@ async function loadDoctorAppointments() {
         <div style="margin-top:8px;font-size:13px;color:var(--text-light);">
           <i class="fas fa-calendar"></i> ${a.appointment_date} ${a.appointment_time}
         </div>
-        ${a.meet_link ? `<div style="margin-top:6px;font-size:13px;"><strong>Meet:</strong> <a href="${a.meet_link}" target="_blank" rel="noopener">${a.meet_link}</a></div>` : ''}
+        ${a.proposed_appointment_date ? `<div style="margin-top:6px;font-size:12px;color:#b45309;font-weight:600;"><i class="fas fa-hourglass-half"></i> Awaiting patient approval: ${a.proposed_appointment_date} ${propTime || a.proposed_appointment_time}</div>` : ''}
+        ${a.status !== 'cancelled' && a.meet_link ? `<div style="margin-top:6px;font-size:13px;"><strong>Meet:</strong> <a href="${a.meet_link}" target="_blank" rel="noopener">${a.meet_link}</a></div>` : ''}
         ${a.patient_notes ? `<div style="margin-top:6px;font-size:13px;color:var(--muted);"><strong>Patient notes:</strong> ${a.patient_notes}</div>` : ''}
         <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">
+          ${a.status === 'cancelled' ? `<button type="button" class="btn" style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;" onclick="doctorDeleteCancelledAppointment(${a.id})"><i class="fas fa-trash-alt"></i> Delete appointment</button>` : `
           ${a.status === 'pending' ? `<button class="btn btn-primary" onclick="doctorUpdateAppointmentStatus(${a.id}, 'confirm_appointment')"><i class="fas fa-check"></i> Confirm</button>` : ''}
           ${a.status === 'confirmed' ? `<button class="btn" style="background:#ecfdf5;color:#166534;" onclick="doctorUpdateAppointmentStatus(${a.id}, 'complete_appointment')"><i class="fas fa-flag-checkered"></i> Complete</button>` : ''}
           ${(a.status === 'pending' || a.status === 'confirmed') ? `<button class="btn" style="background:rgba(239,68,68,0.08);color:var(--danger);" onclick="doctorUpdateAppointmentStatus(${a.id}, 'cancel_appointment')"><i class="fas fa-times"></i> Cancel</button>` : ''}
+          ${(a.status === 'pending' || a.status === 'confirmed') ? `<button type="button" class="btn" style="background:#fef3c7;color:#b45309;border:1px solid #fcd34d;" onclick="openRescheduleModal(${a.id}, '${a.appointment_date}', '${timeShort}')"><i class="fas fa-calendar-alt"></i> Update</button>` : ''}
           <button class="btn" style="background:#dbeafe;color:#1e40af;" onclick="manageMeetLink(${a.id}, ${a.meet_link ? `'${encodeURIComponent(a.meet_link)}'` : 'null'})"><i class="fas fa-video"></i> Meet link</button>
           <button class="btn" style="background:#f9fafb;color:#111827;" onclick="manageAppointment(${a.id})"><i class="fas fa-notes-medical"></i> Notes</button>
+          `}
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     container.innerHTML = '<div class="empty-state">Could not load appointments.</div>';
   }
@@ -1264,7 +1744,7 @@ async function initDashboard() {
                               <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
                                   <div>
                                       <div style="font-weight:700">Dr. ${a.doctor_name || 'Doctor'}</div>
-                                      <div style="font-size:12px;color:var(--muted)">${a.appointment_date} at ${a.appointment_time}</div>
+                                      <div style="font-size:12px;color:var(--muted)">${a.appointment_date} at ${a.appointment_time}${a.proposed_appointment_date ? ' · <span style="color:#b45309;font-weight:600">New time proposed — check appointments</span>' : ''}</div>
                                   </div>
                                   <span class="badge ${a.status==='confirmed'?'badge-success':(a.status==='pending'?'badge-warning':'badge-danger')}">${a.status}</span>
                               </div>
@@ -1295,6 +1775,7 @@ async function initDashboard() {
                    document.getElementById('vitalsLogDateObj').max = today;
                    document.getElementById('vitalsLogDateObj').value = today;
                }
+               if (document.getElementById('notifList')) loadPatientNotifications();
            }
        } catch (err) {
            console.error("Dashboard init error:", err);
@@ -1467,6 +1948,27 @@ async function doctorUpdateAppointmentStatus(id, action) {
       loadDoctorAppointments();
     } else {
       showToast(json.message || 'Update failed', 'error');
+    }
+  } catch (e) {
+    showToast('Server error', 'error');
+  }
+}
+
+async function doctorDeleteCancelledAppointment(id) {
+  if (!id) return;
+  if (!await showConfirm('Remove this cancelled appointment from your list permanently?', { confirmText: 'Delete', type: 'danger' })) return;
+  try {
+    const res = await fetch('../api/doctor_api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'delete_cancelled_appointment', id: String(id) }).toString()
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast('Appointment removed', 'success');
+      loadDoctorAppointments();
+    } else {
+      showToast(json.message || 'Could not delete', 'error');
     }
   } catch (e) {
     showToast('Server error', 'error');

@@ -17,6 +17,32 @@ function ensureReminderCronSchema(PDO $pdo): void
         $pdo->exec('ALTER TABLE medicine_reminders ADD COLUMN send_sms tinyint(1) NOT NULL DEFAULT 0');
     } catch (Throwable $e) {
     }
+    try {
+        $pdo->exec('ALTER TABLE medicine_reminders ADD COLUMN email_daily_time TIME NULL DEFAULT NULL');
+    } catch (Throwable $e) {
+    }
+    try {
+        $pdo->exec('ALTER TABLE medicine_reminders ADD COLUMN last_email_digest_date DATE NULL DEFAULT NULL');
+    } catch (Throwable $e) {
+    }
+}
+
+/** HH:MM or HH:MM:SS → HH:MM:SS for MySQL TIME, or null. */
+function normalizeEmailDailyTimeForDb(string $raw): ?string
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return null;
+    }
+    if (preg_match('/^(\d{1,2}):(\d{2})$/', $raw, $m)) {
+        return sprintf('%02d:%02d:00', (int) $m[1], (int) $m[2]);
+    }
+    if (preg_match('/^(\d{1,2}):(\d{2}):(\d{2})$/', $raw, $m)) {
+        return sprintf('%02d:%02d:%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+    }
+    $ts = strtotime($raw);
+
+    return $ts ? date('H:i:s', $ts) : null;
 }
 
 function reminderSlotToHi(string $raw): string

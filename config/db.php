@@ -37,6 +37,9 @@ try {
                                role = 'admin',
                                status = 'active'");
     $stmt->execute([$adminName, $adminEmail, $adminPasswordHash]);
+
+    require_once __DIR__ . '/appointment_reschedule_schema.php';
+    ensureAppointmentRescheduleSchema($pdo);
 } catch (PDOException $e) {
     die("Database Connection Failed: " . $e->getMessage());
 }

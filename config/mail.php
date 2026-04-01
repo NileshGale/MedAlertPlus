@@ -141,4 +141,91 @@ function sendMedicineReminder($toEmail, $patientName, $medicineName, $dosage, $s
         return false;
     }
 }
+
+/** One email per day at the patient's chosen clock time; lists all dose times. */
+function sendMedicineDailyDigestEmail(string $toEmail, string $patientName, string $medicineName, string $dosage, string $frequencyLabel, string $timesHumanHtml): bool
+{
+    if (!class_exists(PHPMailer::class)) {
+        return false;
+    }
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = MAIL_HOST;
+        $mail->SMTPAuth   = true;
+        $mail->Username   = MAIL_USERNAME;
+        $mail->Password   = MAIL_PASSWORD;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = MAIL_PORT;
+
+        $mail->setFrom(MAIL_USERNAME, 'Med-Alert-Plus Reminder');
+        $mail->addAddress($toEmail);
+
+        $safeName = htmlspecialchars($patientName, ENT_QUOTES, 'UTF-8');
+        $safeMed = htmlspecialchars($medicineName, ENT_QUOTES, 'UTF-8');
+        $safeDose = htmlspecialchars($dosage, ENT_QUOTES, 'UTF-8');
+        $safeFreq = htmlspecialchars($frequencyLabel, ENT_QUOTES, 'UTF-8');
+
+        $mail->isHTML(true);
+        $mail->Subject = "Daily plan: {$medicineName}";
+        $mail->Body = "
+        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #3b82f6; border-radius: 12px;'>
+            <h2 style='color: #1e40af; text-align: center;'>Today's medication schedule</h2>
+            <p>Hello <strong>{$safeName}</strong>,</p>
+            <p>Your daily email summary — sent only at or after the time you set, not before.</p>
+            <div style='background: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #bfdbfe;'>
+                <p style='margin: 0; font-size: 18px; color: #1e40af;'><strong>Medicine:</strong> {$safeMed}</p>
+                <p style='margin: 8px 0; font-size: 16px;'><strong>Dosage:</strong> {$safeDose}</p>
+                <p style='margin: 8px 0; font-size: 16px;'><strong>Frequency:</strong> {$safeFreq}</p>
+                <p style='margin: 12px 0 4px; font-weight: 700;'>Today's dose times:</p>
+                {$timesHumanHtml}
+            </div>
+            <p>Use the times above for when to take this medicine.</p>
+            <hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;' />
+            <p style='font-size: 12px; color: #888; text-align: center;'>&copy; " . date('Y') . " Med-Alert-Plus</p>
+        </div>";
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("Daily digest mail failed: {$mail->ErrorInfo}");
+        return false;
+    }
+}
+
+/**
+ * Generic notice from admin actions (profile update / account removal).
+ */
+function sendAdminAccountEmail(string $toEmail, string $recipientName, string $subject, string $htmlBody): bool
+{
+    if (!class_exists(PHPMailer::class)) {
+        error_log("Admin mail (no PHPMailer): {$subject} -> {$toEmail}");
+        return false;
+    }
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = MAIL_HOST;
+        $mail->SMTPAuth   = true;
+        $mail->Username   = MAIL_USERNAME;
+        $mail->Password   = MAIL_PASSWORD;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = MAIL_PORT;
+
+        $mail->setFrom(MAIL_USERNAME, 'Med-Alert-Plus Admin');
+        $mail->addAddress($toEmail, $recipientName);
+
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body    = $htmlBody;
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("Admin account mail failed: {$mail->ErrorInfo}");
+        return false;
+    }
+}
 ?>

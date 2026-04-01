@@ -26,6 +26,10 @@ switch ($action) {
     case 'update_profile':      updateProfile();      break;
     case 'change_password':     changePassword();     break;
     case 'mark_notif_read':     markNotifRead();      break;
+    case 'delete_notification': deleteNotification(); break;
+    case 'delete_all_notifications': deleteAllNotifications(); break;
+    case 'accept_reschedule':   acceptReschedule();   break;
+    case 'reject_reschedule':   rejectReschedule();   break;
     case 'add_vitals':          addVitals();          break;
     case 'delete_vitals':       deleteVitals();       break;
     case 'mark_medicine_adherence': markMedicineAdherence(); break;
@@ -65,10 +69,12 @@ function bookAppointment() {
 }
 
 function cancelAppointment() {
-    global $pdo, $profileId;
+    global $pdo, $profileId, $userId;
     $id = intval($_POST['id'] ?? 0);
-    $stmt = $pdo->prepare("UPDATE appointments SET status='cancelled' WHERE id=? AND patient_id=?");
+    ensureAppointmentRescheduleSchema($pdo);
+    $stmt = $pdo->prepare("UPDATE appointments SET status='cancelled', proposed_appointment_date=NULL, proposed_appointment_time=NULL WHERE id=? AND patient_id=?");
     $stmt->execute([$id, $profileId]);
+    $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND appointment_id=? AND cta='reschedule'")->execute([$userId, $id]);
     echo json_encode(['success'=>true]);
 }
 
@@ -83,15 +89,28 @@ function addMedicine() {
     $notes     = trim($_POST['notes'] ?? '');
     $sendEmail = !empty($_POST['send_email']) ? 1 : 0;
     $sendWa    = !empty($_POST['send_whatsapp']) ? 1 : 0;
-    $sendSms   = !empty($_POST['send_sms']) ? 1 : 0;
     $waNumber  = trim($_POST['whatsapp_number'] ?? '');
-    
+    $emailDaily = null;
+    if ($sendEmail) {
+        $emailDaily = normalizeEmailDailyTimeForDb(trim($_POST['email_daily_time'] ?? ''));
+        if ($emailDaily === null) {
+            $dec = json_decode($times, true);
+            if (is_array($dec) && isset($dec[0])) {
+                $emailDaily = normalizeEmailDailyTimeForDb((string) $dec[0]);
+            }
+        }
+        if ($emailDaily === null) {
+            echo json_encode(['success' => false, 'message' => 'Choose a daily email time, or add at least one reminder time.']);
+            return;
+        }
+    }
+
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
 
     ensureReminderCronSchema($pdo);
 
-    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,send_sms,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)");
-    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$sendWa,$waNumber,$sendSms]);
+    $stmt = $pdo->prepare("INSERT INTO medicine_reminders (patient_id,medicine_name,dosage,frequency,reminder_times,start_date,end_date,notes,send_email,send_whatsapp,whatsapp_number,send_sms,email_daily_time,last_email_digest_date,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,NULL,1)");
+    $stmt->execute([$profileId,$name,$dosage,$freq,$times,$start,$end,$notes,$sendEmail,$sendWa,$waNumber,$emailDaily]);
     $newRemId = $pdo->lastInsertId();
 
     // ---- Real-time Notification Trigger ----
@@ -134,12 +153,25 @@ function editMedicine() {
     $notes  = trim($_POST['notes'] ?? '');
     $email  = !empty($_POST['send_email']) ? 1 : 0;
     $wa     = !empty($_POST['send_whatsapp']) ? 1 : 0;
-    $sms    = !empty($_POST['send_sms']) ? 1 : 0;
     $waNumber = trim($_POST['whatsapp_number'] ?? '');
+    $emailDaily = null;
+    if ($email) {
+        $emailDaily = normalizeEmailDailyTimeForDb(trim($_POST['email_daily_time'] ?? ''));
+        if ($emailDaily === null) {
+            $dec = json_decode($times, true);
+            if (is_array($dec) && isset($dec[0])) {
+                $emailDaily = normalizeEmailDailyTimeForDb((string) $dec[0]);
+            }
+        }
+        if ($emailDaily === null) {
+            echo json_encode(['success' => false, 'message' => 'Choose a daily email time, or add at least one reminder time.']);
+            return;
+        }
+    }
     if (!$name || !$dosage) { echo json_encode(['success'=>false,'message'=>'Medicine name and dosage required.']); return; }
     ensureReminderCronSchema($pdo);
-    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=?,send_sms=? WHERE id=? AND patient_id=?");
-    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$wa,$waNumber,$sms,$id,$profileId]);
+    $stmt = $pdo->prepare("UPDATE medicine_reminders SET medicine_name=?,dosage=?,frequency=?,reminder_times=?,start_date=?,end_date=?,notes=?,send_email=?,send_whatsapp=?,whatsapp_number=?,send_sms=0,email_daily_time=?,last_email_digest_date=NULL WHERE id=? AND patient_id=?");
+    $stmt->execute([$name,$dosage,$freq,$times,$start,$end,$notes,$email,$wa,$waNumber,$emailDaily,$id,$profileId]);
     echo json_encode(['success'=>true]);
 }
 
@@ -235,6 +267,91 @@ function markNotifRead() {
     global $pdo, $userId;
     $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=?")->execute([$userId]);
     echo json_encode(['success'=>true]);
+}
+
+function deleteNotification() {
+    global $pdo, $userId;
+    $id = intval($_POST['id'] ?? 0);
+    if (!$id) {
+        echo json_encode(['success' => false, 'message' => 'Invalid notification.']);
+        return;
+    }
+    $stmt = $pdo->prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?');
+    $stmt->execute([$id, $userId]);
+    echo json_encode(['success' => true]);
+}
+
+function deleteAllNotifications() {
+    global $pdo, $userId;
+    $pdo->prepare('DELETE FROM notifications WHERE user_id = ?')->execute([$userId]);
+    echo json_encode(['success' => true]);
+}
+
+function acceptReschedule() {
+    global $pdo, $profileId, $userId;
+    ensureAppointmentRescheduleSchema($pdo);
+    $id = intval($_POST['id'] ?? 0);
+    $stmt = $pdo->prepare("SELECT a.* FROM appointments a WHERE a.id=? AND a.patient_id=?");
+    $stmt->execute([$id, $profileId]);
+    $row = $stmt->fetch();
+    if (!$row || empty($row['proposed_appointment_date']) || empty($row['proposed_appointment_time'])) {
+        echo json_encode(['success' => false, 'message' => 'No pending reschedule for this appointment.']);
+        return;
+    }
+    $newDate = $row['proposed_appointment_date'];
+    $newTime = $row['proposed_appointment_time'];
+    $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id=? AND appointment_date=? AND appointment_time=? AND status NOT IN ('cancelled') AND id != ?");
+    $check->execute([(int) $row['doctor_id'], $newDate, $newTime, $id]);
+    if ($check->fetch()) {
+        echo json_encode(['success' => false, 'message' => 'That slot is no longer available.']);
+        return;
+    }
+    $pdo->prepare("UPDATE appointments SET appointment_date=?, appointment_time=?, proposed_appointment_date=NULL, proposed_appointment_time=NULL WHERE id=? AND patient_id=?")
+        ->execute([$newDate, $newTime, $id, $profileId]);
+    $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND appointment_id=? AND cta='reschedule'")->execute([$userId, $id]);
+
+    $doc = $pdo->prepare("SELECT u.id AS doc_user_id, u.name AS doc_name FROM doctors d JOIN users u ON d.user_id=u.id WHERE d.id=?");
+    $doc->execute([(int) $row['doctor_id']]);
+    $dinfo = $doc->fetch();
+    if ($dinfo) {
+        $pnStmt = $pdo->prepare("SELECT name FROM users WHERE id=?");
+        $pnStmt->execute([$userId]);
+        $pname = $pnStmt->fetchColumn() ?: 'A patient';
+        $when = date('M d, Y', strtotime($newDate)) . ' at ' . date('h:i A', strtotime($newTime));
+        $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'success')")
+            ->execute([(int) $dinfo['doc_user_id'], 'Reschedule accepted', $pname . ' accepted the new appointment time: ' . $when . '.']);
+    }
+
+    echo json_encode(['success' => true]);
+}
+
+function rejectReschedule() {
+    global $pdo, $profileId, $userId;
+    ensureAppointmentRescheduleSchema($pdo);
+    $id = intval($_POST['id'] ?? 0);
+    $stmt = $pdo->prepare("SELECT a.* FROM appointments a WHERE a.id=? AND a.patient_id=?");
+    $stmt->execute([$id, $profileId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        echo json_encode(['success' => false, 'message' => 'Appointment not found.']);
+        return;
+    }
+    if (empty($row['proposed_appointment_date'])) {
+        echo json_encode(['success' => false, 'message' => 'No pending reschedule.']);
+        return;
+    }
+    $pdo->prepare("UPDATE appointments SET proposed_appointment_date=NULL, proposed_appointment_time=NULL WHERE id=? AND patient_id=?")->execute([$id, $profileId]);
+    $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND appointment_id=? AND cta='reschedule'")->execute([$userId, $id]);
+
+    $doc = $pdo->prepare("SELECT u.id AS doc_user_id FROM doctors d JOIN users u ON d.user_id=u.id WHERE d.id=?");
+    $doc->execute([(int) $row['doctor_id']]);
+    $dinfo = $doc->fetch();
+    if ($dinfo) {
+        $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'warning')")
+            ->execute([(int) $dinfo['doc_user_id'], 'Reschedule declined', 'The patient declined your proposed new appointment time. The original schedule remains.']);
+    }
+
+    echo json_encode(['success' => true]);
 }
 
 function addVitals() {

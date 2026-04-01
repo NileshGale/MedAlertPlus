@@ -117,6 +117,30 @@ try {
             echo json_encode($response);
             exit;
 
+        case 'admin_patients_list':
+            if ($role !== 'admin') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->query("SELECT u.id AS user_id, u.name, u.email, u.phone, u.status, u.created_at,
+                                         p.id AS patient_id, p.age, p.gender
+                                  FROM users u
+                                  INNER JOIN patients p ON p.user_id = u.id
+                                  WHERE u.role = 'patient'
+                                  ORDER BY u.name ASC");
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'admin_doctors_list':
+            if ($role !== 'admin') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            $stmt = $pdo->query("SELECT u.id AS user_id, u.name, u.email, u.phone, u.status, u.created_at,
+                                         d.id AS doctor_id, d.specialization, d.clinic_name, d.approval_status
+                                  FROM users u
+                                  INNER JOIN doctors d ON d.user_id = u.id
+                                  WHERE u.role = 'doctor'
+                                  ORDER BY u.name ASC");
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
         case 'patient_appointments':
             if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
             $stmt = $pdo->prepare("SELECT a.*, u.name AS doctor_name, d.specialization, d.clinic_name
@@ -126,6 +150,20 @@ try {
                                    WHERE a.patient_id = ?
                                    ORDER BY a.appointment_date DESC, a.appointment_time DESC");
             $stmt->execute([$profileId]);
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
+
+        case 'patient_notifications':
+            if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            require_once __DIR__ . '/../config/appointment_reschedule_schema.php';
+            ensureAppointmentRescheduleSchema($pdo);
+            $stmt = $pdo->prepare("SELECT id, title, message, type, is_read, created_at, appointment_id, cta
+                                   FROM notifications
+                                   WHERE user_id = ?
+                                   ORDER BY created_at DESC
+                                   LIMIT 50");
+            $stmt->execute([$userId]);
             $response['data'] = $stmt->fetchAll();
             echo json_encode($response);
             exit;
