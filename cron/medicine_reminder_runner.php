@@ -63,29 +63,30 @@ function executeMedicineReminderDispatch(
                         }
                         $lines[] = date('h:i A', strtotime($today . ' ' . $hi . ':00'));
                     }
+                    $timesHtml = '';
                     if ($lines !== []) {
-                        $timesHtml = '<ul style="margin:8px 0;padding-left:20px;"><li>'
-                            . implode('</li><li>', array_map(static function ($l) {
+                        $timesHtml = '<p style="margin: 8px 0; font-size: 16px;"><strong>you have to take medicine at:</strong> '
+                            . implode(', ', array_map(static function ($l) {
                                 return htmlspecialchars($l, ENT_QUOTES, 'UTF-8');
                             }, $lines))
-                            . '</li></ul>';
-                        $freqLabel = ucfirst((string) ($rem['frequency'] ?? 'daily'));
-                        if (sendMedicineDailyDigestEmail(
-                            $targetEmail,
-                            $rem['patient_name'],
-                            $rem['medicine_name'],
-                            $rem['dosage'],
-                            $freqLabel,
-                            $timesHtml,
-                            $rem['instructions'] ?? null,
-                            $rem['color_tag'] ?? null
-                        )) {
-                            $pdo->prepare('UPDATE medicine_reminders SET last_email_digest_date = ? WHERE id = ?')->execute([$today, $rem['id']]);
-                            if ($verbose) {
-                                echo "Daily email digest: {$rem['medicine_name']}\n";
-                            }
-                            $fired++;
+                            . '</p>';
+                    }
+
+                    if (sendMedicineDailyDigestEmail(
+                        $targetEmail,
+                        $rem['patient_name'],
+                        $rem['medicine_name'],
+                        $rem['dosage'],
+                        '', // frequencyLabel removed as requested
+                        $timesHtml,
+                        $rem['instructions'] ?? null,
+                        $rem['color_tag'] ?? null
+                    )) {
+                        $pdo->prepare('UPDATE medicine_reminders SET last_email_digest_date = ? WHERE id = ?')->execute([$today, $rem['id']]);
+                        if ($verbose) {
+                            echo "Daily email summary: {$rem['medicine_name']}\n";
                         }
+                        $fired++;
                     }
                 }
             }

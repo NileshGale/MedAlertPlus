@@ -188,16 +188,14 @@ function sendMedicineDailyDigestEmail(string $toEmail, string $patientName, stri
         <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid {$borderCol}; border-radius: 12px; border-left: 8px solid {$borderCol};'>
             <h2 style='color: #1e40af; text-align: center;'>Today's medication schedule</h2>
             <p>Hello <strong>{$safeName}</strong>,</p>
-            <p>Your daily email summary — sent only at or after the time you set, not before.</p>
+            <p>Your daily email summary — sent only at your chosen set time.</p>
             <div style='background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;'>
                 <p style='margin: 0; font-size: 18px; color: #1e40af;'><strong>Medicine:</strong> {$safeMed}</p>
                 <p style='margin: 8px 0; font-size: 16px;'><strong>Dosage:</strong> {$safeDose}</p>
-                <p style='margin: 8px 0; font-size: 16px;'><strong>Frequency:</strong> {$safeFreq}</p>
-                {$instrHtml}
-                <p style='margin: 12px 0 4px; font-weight: 700;'>Today's dose times:</p>
                 {$timesHumanHtml}
+                {$instrHtml}
             </div>
-            <p>Use the times above for when to take this medicine.</p>
+            <p>Remember to take your dose on time today.</p>
             <hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;' />
             <p style='font-size: 12px; color: #888; text-align: center;'>&copy; " . date('Y') . " Med-Alert-Plus</p>
         </div>";

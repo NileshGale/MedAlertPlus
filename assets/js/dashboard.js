@@ -268,14 +268,6 @@ async function triggerSOSNoGps() {
 }
 
 // ---- Patient: Medicine Reminders ----
-function addTimeField() {
-  const container = document.getElementById('reminderTimesContainer');
-  const div = document.createElement('div');
-  div.style = "display:flex;gap:10px;margin-bottom:10px";
-  div.innerHTML = `<input type="time" name="times[]" required style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;">
-                   <button type="button" onclick="this.parentElement.remove()" style="background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;color:var(--danger)"><i class="fas fa-trash"></i></button>`;
-  container.appendChild(div);
-}
 
 function selectMedType(type, el) {
   document.getElementById('medTypeInput').value = type;
@@ -315,18 +307,8 @@ if (medForm) {
   medForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(medForm);
-    const times = Array.from(document.querySelectorAll('input[name="times[]"]')).map(i => i.value);
-    
-    // Automatically set start date to today if not set
-    if (!formData.get('start_date')) {
-      formData.set('start_date', new Date().toISOString().split('T')[0]);
-    }
-
-    const emailDailyIn = document.getElementById('medicineEmailDailyTime');
-    if (emailSendCb?.checked && emailDailyIn && !emailDailyIn.value && times[0]) {
-      emailDailyIn.value = times[0].slice(0, 5);
-    }
-    formData.set('reminder_times', JSON.stringify(times));
+    const timeVal = formData.get('medication_time');
+    formData.set('reminder_times', JSON.stringify(timeVal ? [timeVal] : []));
     
     try {
       const res = await fetch('../api/patient_api.php', { method: 'POST', body: formData });
@@ -340,12 +322,6 @@ if (medForm) {
         if (reminderEmail) reminderEmail.value = '';
         const emailCb = medForm.querySelector('input[name="send_email"]');
         if (emailCb) emailCb.checked = true;
-        // Reset time fields to one
-        document.getElementById('reminderTimesContainer').innerHTML = `<label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600">Reminder Times (Set Timers)</label>
-                   <div style="display:flex;gap:10px;margin-bottom:10px">
-                      <input type="time" name="times[]" required style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;">
-                      <button type="button" onclick="addTimeField()" style="background:var(--bg);border:1px solid var(--border);padding:10px;border-radius:8px;"><i class="fas fa-plus"></i></button>
-                   </div>`;
         loadMedicines();
       } else showToast(data.message, 'error');
     } catch (err) { showToast('Server error', 'error'); }
