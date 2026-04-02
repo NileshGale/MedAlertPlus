@@ -335,7 +335,9 @@ if (medForm) {
         showToast(data.message, 'success');
         medForm.reset();
         const emailDaily = document.getElementById('medicineEmailDailyTime');
+        const reminderEmail = document.getElementById('medicineReminderEmail');
         if (emailDaily) emailDaily.value = '';
+        if (reminderEmail) reminderEmail.value = '';
         const emailCb = medForm.querySelector('input[name="send_email"]');
         if (emailCb) emailCb.checked = true;
         // Reset time fields to one

@@ -568,6 +568,12 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                 <div style="display:flex;flex-wrap:wrap;gap:20px;margin-bottom:12px">
                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--primary)"><input type="checkbox" name="send_email" value="1" checked> Enable Daily Summary Email</label>
                 </div>
+
+                <div id="reminderEmailRow" style="margin-bottom:15.5px;">
+                   <label style="display:block;margin-bottom:5.5px;font-size:13px;font-weight:600">Reminder Email (Optional)</label>
+                   <input type="email" name="reminder_email" id="medicineReminderEmail" placeholder="Alternative email (e.g. caregiver@mail.com)" style="width:100%;padding:10.5px;border:1px solid var(--border);border-radius:8.5px;">
+                   <p style="font-size:11.5px;color:var(--muted);margin-top:4.5px;">Defaults to your account email if left empty.</p>
+                </div>
                 
                 <div id="emailDailyTimeRow" style="margin-bottom:20px; padding:12px; background:#f0f9ff; border-radius:10px; border:1px solid #bae6fd;">
                    <label style="display:block;margin-bottom:8px;font-size:13px;font-weight:700;color:#0369a1">Daily Digest Send Time</label>

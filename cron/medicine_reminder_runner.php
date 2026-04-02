@@ -20,7 +20,7 @@ function executeMedicineReminderDispatch(
 
     $today = date('Y-m-d');
     $sql = '
-        SELECT r.*, u.email, u.name AS patient_name, u.phone, r.instructions, r.color_tag
+        SELECT r.*, u.email AS default_email, u.name AS patient_name, u.phone, r.instructions, r.color_tag
         FROM medicine_reminders r
         JOIN patients p ON r.patient_id = p.id
         JOIN users u ON p.user_id = u.id
@@ -49,7 +49,9 @@ function executeMedicineReminderDispatch(
             ? (string) $rem['email_daily_time']
             : null;
 
-        if (!empty($rem['send_email']) && !empty($rem['email']) && $emailDailyRaw !== null) {
+        $targetEmail   = !empty($rem['reminder_email']) ? (string)$rem['reminder_email'] : (string)($rem['default_email'] ?? '');
+
+        if (!empty($rem['send_email']) && $targetEmail !== '' && $emailDailyRaw !== null) {
             if (reminderSlotIsDueWithinWindow($emailDailyRaw, $timezone, $windowMinutes)) {
                 $lastDigest = $rem['last_email_digest_date'] ?? null;
                 if ($lastDigest !== $today) {
@@ -69,7 +71,7 @@ function executeMedicineReminderDispatch(
                             . '</li></ul>';
                         $freqLabel = ucfirst((string) ($rem['frequency'] ?? 'daily'));
                         if (sendMedicineDailyDigestEmail(
-                            $rem['email'],
+                            $targetEmail,
                             $rem['patient_name'],
                             $rem['medicine_name'],
                             $rem['dosage'],
@@ -107,9 +109,9 @@ function executeMedicineReminderDispatch(
             $timePretty = date('h:i A', strtotime($today . ' ' . $slotHi . ':00'));
             $status = 'sent';
 
-            $usePerSlotEmail = !empty($rem['send_email']) && !empty($rem['email']) && $emailDailyRaw === null;
+            $usePerSlotEmail = !empty($rem['send_email']) && $targetEmail !== '' && $emailDailyRaw === null;
             if ($usePerSlotEmail) {
-                if (!sendMedicineReminder($rem['email'], $rem['patient_name'], $rem['medicine_name'], $rem['dosage'], $timePretty, $rem['instructions'] ?? null, $rem['color_tag'] ?? null)) {
+                if (!sendMedicineReminder($targetEmail, $rem['patient_name'], $rem['medicine_name'], $rem['dosage'], $timePretty, $rem['instructions'] ?? null, $rem['color_tag'] ?? null)) {
                     $status = 'failed';
                 }
                 if ($verbose) {

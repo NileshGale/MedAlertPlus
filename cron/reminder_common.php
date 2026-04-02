@@ -25,6 +25,10 @@ function ensureReminderCronSchema(PDO $pdo): void
         $pdo->exec('ALTER TABLE medicine_reminders ADD COLUMN last_email_digest_date DATE NULL DEFAULT NULL');
     } catch (Throwable $e) {
     }
+    try {
+        $pdo->exec('ALTER TABLE medicine_reminders ADD COLUMN reminder_email VARCHAR(255) DEFAULT NULL');
+    } catch (Throwable $e) {
+    }
 }
 
 /** HH:MM or HH:MM:SS → HH:MM:SS for MySQL TIME, or null. */
