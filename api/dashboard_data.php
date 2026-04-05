@@ -331,6 +331,76 @@ try {
             $response['data'] = $stmt->fetch() ?: [];
             echo json_encode($response);
             exit;
+
+        case 'admin_reports':
+            if ($role !== 'admin') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            
+            // Ensure tables exist
+            $pdo->exec("CREATE TABLE IF NOT EXISTS sos_alerts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                patient_id INT NOT NULL,
+                latitude DECIMAL(10, 8),
+                longitude DECIMAL(11, 8),
+                status ENUM('active', 'resolved') DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            // 1. Appointment breakdown (Online vs Physical)
+            $stmt = $pdo->query("SELECT type, COUNT(*) as count FROM appointments GROUP BY type");
+            $apptType = $stmt->fetchAll();
+
+            // 2. SOS Stats
+            $sosTotal = (int)$pdo->query("SELECT COUNT(*) FROM sos_alerts")->fetchColumn();
+            $sosActive = (int)$pdo->query("SELECT COUNT(*) FROM sos_alerts WHERE status = 'active'")->fetchColumn();
+
+            // 3. Platform Engagement
+            $symptomChecks = (int)$pdo->query("SELECT COUNT(*) FROM symptom_checks")->fetchColumn();
+            $reportUploads = (int)$pdo->query("SELECT COUNT(*) FROM patient_reports")->fetchColumn();
+            $medReminders  = (int)$pdo->query("SELECT COUNT(*) FROM medicine_reminders")->fetchColumn();
+
+            // 4. Monthly Trend (last 6 months)
+            $stmt = $pdo->query("SELECT DATE_FORMAT(appointment_date, '%b %Y') as month, COUNT(*) as count 
+                                 FROM appointments 
+                                 GROUP BY month 
+                                 ORDER BY MIN(appointment_date) DESC 
+                                 LIMIT 6");
+            $trends = array_reverse($stmt->fetchAll());
+
+            $response['data'] = [
+                'apptType' => $apptType,
+                'sos' => ['total' => $sosTotal, 'active' => $sosActive],
+                'engagement' => [
+                    'symptoms' => $symptomChecks,
+                    'reports' => $reportUploads,
+                    'reminders' => $medReminders
+                ],
+                'trends' => $trends
+            ];
+            echo json_encode($response);
+            exit;
+
+        case 'admin_sos_logs':
+            if ($role !== 'admin') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
+            
+            // Ensure table exists
+            $pdo->exec("CREATE TABLE IF NOT EXISTS sos_alerts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                patient_id INT NOT NULL,
+                latitude DECIMAL(10, 8),
+                longitude DECIMAL(11, 8),
+                status ENUM('active', 'resolved') DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            $stmt = $pdo->query("SELECT s.*, u.name as patient_name, u.phone 
+                                 FROM sos_alerts s 
+                                 JOIN patients p ON s.patient_id = p.id 
+                                 JOIN users u ON p.user_id = u.id 
+                                 ORDER BY s.created_at DESC 
+                                 LIMIT 20");
+            $response['data'] = $stmt->fetchAll();
+            echo json_encode($response);
+            exit;
     }
 
     // Default 'all' data for initial dashboard load

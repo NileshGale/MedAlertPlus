@@ -90,7 +90,7 @@ function showTab(name) {
     medicines: ['Medicine Reminders', 'Manage your daily medication schedule'],
     symptoms: ['AI Symptom Checker', 'Describe your symptoms for analysis'],
     clinics: ['Find Nearby Clinics', 'Search and locate clinics near you'],
-    reports: ['Medical Reports', 'Upload and manage your health reports'],
+    reports: ['System Reporting & Insights', 'Analytics and emergency logs overview'],
     analytics: ['Health Analytics', 'Log and visualize your vital trends'],
     profile: ['My Profile', 'Update your personal information'],
     approvals: ['Doctor Approvals', 'Review pending doctor registrations'],
@@ -135,6 +135,10 @@ function showTab(name) {
   if (name === 'approvals' && document.getElementById('adminApprovalsTableBody')) loadAdminApprovals();
   if (name === 'admin_patients' && document.getElementById('adminPatientsTableBody')) loadAdminPatientsList();
   if (name === 'admin_doctors' && document.getElementById('adminDoctorsTableBody')) loadAdminDoctorsList();
+  if (name === 'reports') {
+    if (document.getElementById('patientReportsList')) loadPatientReports();
+    if (document.getElementById('adminSosLogsTableBody')) loadAdminReports();
+  }
 }
 
 // ---- Sidebar Toggle ----
@@ -2928,3 +2932,125 @@ if (reportForm) {
   });
 }
 
+
+// ---- Admin Reports & Analytics ----
+let adminApptChart = null;
+let adminTrendChart = null;
+
+async function loadAdminReports() {
+    try {
+        // 1. Load Statistics and Charts Data
+        const res = await fetch('../api/dashboard_data.php?type=admin_reports');
+        const json = await res.json();
+        if (json.success) {
+            const d = json.data;
+            
+            // Update Summary Cards
+            if (document.getElementById('rep-sos-total')) document.getElementById('rep-sos-total').textContent = d.sos.total;
+            if (document.getElementById('rep-appt-total')) {
+                const totalAppts = d.apptType.reduce((acc, curr) => acc + parseInt(curr.count), 0);
+                document.getElementById('rep-appt-total').textContent = totalAppts;
+            }
+            if (document.getElementById('rep-ai-total')) document.getElementById('rep-ai-total').textContent = d.engagement.reports;
+            if (document.getElementById('rep-symp-total')) document.getElementById('rep-symp-total').textContent = d.engagement.symptoms;
+
+            renderAdminCharts(d);
+        }
+
+        // 2. Load SOS Logs Table
+        const resLogs = await fetch('../api/dashboard_data.php?type=admin_sos_logs');
+        const jsonLogs = await resLogs.json();
+        const logsBody = document.getElementById('adminSosLogsTableBody');
+        if (jsonLogs.success && logsBody) {
+            if (jsonLogs.data.length === 0) {
+                logsBody.innerHTML = '<tr><td colspan="4" class="empty-state">No SOS alerts recorded.</td></tr>';
+            } else {
+                logsBody.innerHTML = jsonLogs.data.map(log => `
+                    <tr>
+                        <td>
+                            <div style="font-weight:600;">${escapeHtml(log.patient_name)}</div>
+                            <div style="font-size:11px; color:var(--muted);">${escapeHtml(log.phone)}</div>
+                        </td>
+                        <td>
+                            <a href="https://www.google.com/maps?q=${log.latitude},${log.longitude}" target="_blank" style="color:var(--primary); text-decoration:none;">
+                                <i class="fas fa-map-marker-alt"></i> View Map
+                            </a>
+                        </td>
+                        <td>${new Date(log.created_at).toLocaleString()}</td>
+                        <td>
+                            <span class="badge ${log.status === 'active' ? 'badge-danger' : 'badge-success'}">
+                                ${log.status.toUpperCase()}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+    } catch (e) {
+        console.error("Error loading admin reports:", e);
+    }
+}
+
+function renderAdminCharts(data) {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#cbd5e1' : '#475569';
+
+    // 1. Appointment Type Chart (Pie)
+    const ctxAppt = document.getElementById('apptTypeChart')?.getContext('2d');
+    if (ctxAppt) {
+        if (adminApptChart) adminApptChart.destroy();
+        adminApptChart = new Chart(ctxAppt, {
+            type: 'doughnut',
+            data: {
+                labels: data.apptType.map(t => t.type.charAt(0).toUpperCase() + t.type.slice(1)),
+                datasets: [{
+                    data: data.apptType.map(t => t.count),
+                    backgroundColor: ['#3b82f6', '#10b981'],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: textColor } }
+                }
+            }
+        });
+    }
+
+    // 2. Growth Trend Chart (Line)
+    const ctxTrend = document.getElementById('growthTrendChart')?.getContext('2d');
+    if (ctxTrend) {
+        if (adminTrendChart) adminTrendChart.destroy();
+        adminTrendChart = new Chart(ctxTrend, {
+            type: 'line',
+            data: {
+                labels: data.trends.map(t => t.month),
+                datasets: [{
+                    label: 'Appointments',
+                    data: data.trends.map(t => t.count),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: textColor } },
+                    x: { grid: { display: false }, ticks: { color: textColor } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
+}
+
+function exportData(type) {
+    window.location.href = `../api/admin_export.php?type=${type}`;
+}

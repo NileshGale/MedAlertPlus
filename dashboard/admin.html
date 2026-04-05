@@ -353,10 +353,69 @@ tr:hover { background: #f8fafc; }
 
     <!-- Reports Tab -->
     <div class="tab-pane" id="tab-reports">
+       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:24px;">
+          <div class="stat-card" style="border-left: 4px solid var(--danger);">
+             <div class="stat-icon" style="background:#fee2e2; color:var(--danger);"><i class="fas fa-ambulance"></i></div>
+             <div class="stat-info">
+                <div class="stat-num" id="rep-sos-total">0</div>
+                <div class="stat-label">Total SOS Alerts</div>
+             </div>
+          </div>
+          <div class="stat-card" style="border-left: 4px solid var(--primary);">
+             <div class="stat-icon" style="background:#dbeafe; color:var(--primary);"><i class="fas fa-calendar-check"></i></div>
+             <div class="stat-info">
+                <div class="stat-num" id="rep-appt-total">0</div>
+                <div class="stat-label">Consultations</div>
+             </div>
+          </div>
+          <div class="stat-card" style="border-left: 4px solid var(--success);">
+             <div class="stat-icon" style="background:#dcfce7; color:var(--success);"><i class="fas fa-robot"></i></div>
+             <div class="stat-info">
+                <div class="stat-num" id="rep-ai-total">0</div>
+                <div class="stat-label">AI Summaries</div>
+             </div>
+          </div>
+          <div class="stat-card" style="border-left: 4px solid var(--warning);">
+             <div class="stat-icon" style="background:#fef3c7; color:var(--warning);"><i class="fas fa-stethoscope"></i></div>
+             <div class="stat-info">
+                <div class="stat-num" id="rep-symp-total">0</div>
+                <div class="stat-label">Symptom Checks</div>
+             </div>
+          </div>
+       </div>
+
+       <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:24px; margin-bottom:24px;">
+          <div class="card">
+             <div class="card-header">Recent SOS Activity</div>
+             <div class="card-body" style="padding:0; max-height:400px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse;">
+                   <thead style="position:sticky; top:0; background:var(--bg); z-index:10;">
+                      <tr><th>Patient</th><th>Location</th><th>Time</th><th>Status</th></tr>
+                   </thead>
+                   <tbody id="adminSosLogsTableBody">
+                      <tr><td colspan="4" class="empty-state">Loading SOS logs...</td></tr>
+                   </tbody>
+                </table>
+             </div>
+          </div>
+          <div class="card">
+             <div class="card-header">Consultation Types</div>
+             <div class="card-body" style="display:flex; align-items:center; justify-content:center; min-height:300px;">
+                <canvas id="apptTypeChart"></canvas>
+             </div>
+          </div>
+       </div>
+
        <div class="card">
-          <div class="card-header">System Reports</div>
+          <div class="card-header">
+             <span>System Growth & Export</span>
+             <div style="display:flex; gap:12px;">
+                <button class="btn btn-primary btn-sm" onclick="exportData('sos')"><i class="fas fa-file-csv"></i> SOS History</button>
+                <button class="btn btn-primary btn-sm" onclick="exportData('appointments')"><i class="fas fa-file-csv"></i> Appt Records</button>
+             </div>
+          </div>
           <div class="card-body">
-             <div class="empty-state">Generate and download comprehensive health and system usage reports.</div>
+             <div style="height:250px;"><canvas id="growthTrendChart"></canvas></div>
           </div>
        </div>
     </div>
