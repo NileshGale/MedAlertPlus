@@ -1480,47 +1480,6 @@ async function adminDeleteDoctorConfirm(userId) {
   }
 }
 
-async function loadPatientReports() {
-  const container = document.getElementById('patientReportsList');
-  if (!container) return;
-  try {
-    const res = await fetch('../api/dashboard_data.php?type=patient_reports');
-    const json = await res.json();
-    if (!json.success || !json.data || json.data.length === 0) {
-      container.innerHTML = '<div class="empty-state">No reports uploaded yet.</div>';
-      return;
-    }
-    const q = (document.getElementById('reportSearchInput')?.value || '').trim().toLowerCase();
-    const type = document.getElementById('reportTypeFilter')?.value || 'all';
-    const rows = json.data.filter((r) => {
-      const name = (r.file_name || '').toLowerCase();
-      const ft = (r.file_type || '').toLowerCase();
-      const matchesQ = !q || name.includes(q);
-      const matchesType = type === 'all' || ft === type;
-      return matchesQ && matchesType;
-    });
-    if (!rows.length) {
-      container.innerHTML = '<div class="empty-state">No reports match your search/filter.</div>';
-      return;
-    }
-    container.innerHTML = rows.map(r => `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">
-        <div>
-          <div style="font-weight:700;">${r.file_name}</div>
-          <div style="font-size:12px;color:var(--muted);">${r.file_type || '-'} · ${r.uploaded_at}</div>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <a class="btn" href="../uploads/${r.file_path}" target="_blank" rel="noopener" style="background:#eff6ff;color:#1e40af;">View</a>
-          <button class="btn" style="background:#f8fafc;color:#1f2937;" onclick="previewPatientReport('${r.file_type || ''}', '../uploads/${r.file_path}')">Preview</button>
-          <button class="btn" style="background:rgba(239,68,68,0.1);color:var(--danger);" onclick="deletePatientReport(${r.id})">Delete</button>
-        </div>
-      </div>
-    `).join('');
-    container.innerHTML += '<div id="reportPreviewBox" style="margin-top:12px;"></div>';
-  } catch (e) {
-    container.innerHTML = '<div class="empty-state">Could not load reports.</div>';
-  }
-}
 
 function previewPatientReport(fileType, url) {
   const box = document.getElementById('reportPreviewBox');
@@ -2833,26 +2792,42 @@ function renderPatientReports(reports) {
         <option value="png" ${document.getElementById('reportTypeFilter')?.value === 'png' ? 'selected' : ''}>PNG Images</option>
       </select>
     </div>
-    <div class="reports-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:15px;max-height:400px;overflow-y:auto;padding:5px;">
+    <div id="reportsContainer" style="display:flex; flex-direction:column; gap:12px; max-height:500px; overflow-y:auto; padding:5px;">
   `;
 
   reports.forEach(r => {
-    let icon = 'fa-file-alt';
-    let color = '#64748b';
-    if (r.file_type === 'pdf') { icon = 'fa-file-pdf'; color = '#ef4444'; }
-    else if (['jpg', 'jpeg', 'png'].includes(r.file_type)) { icon = 'fa-file-image'; color = '#3b82f6'; }
-    else if (['doc', 'docx'].includes(r.file_type)) { icon = 'fa-file-word'; color = '#2563eb'; }
+    let catIcon = '<i class="fas fa-file-medical"></i>';
+    const cat = r.category || 'General Report';
+    if (cat.includes('Blood')) catIcon = '<i class="fas fa-tint" style="color:#ef4444"></i>';
+    else if (cat.includes('Imaging')) catIcon = '<i class="fas fa-x-ray" style="color:#3b82f6"></i>';
+    else if (cat.includes('Prescription')) catIcon = '<i class="fas fa-prescription" style="color:#10b981"></i>';
+    else if (cat.includes('Vaccination')) catIcon = '<i class="fas fa-syringe" style="color:#8b5cf6"></i>';
+    else if (cat.includes('Urine')) catIcon = '<i class="fas fa-flask" style="color:#f59e0b"></i>';
 
     html += `
-      <div class="report-item" style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg);position:relative;transition:var(--transition);">
-        <div style="font-size:24px;color:${color};margin-bottom:8px;text-align:center;">
-          <i class="fas ${icon}"></i>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--bg); transition:var(--transition);">
+        <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+          <div style="width:36px; height:36px; border-radius:8px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; border:1px solid var(--border);">
+            ${catIcon}
+          </div>
+          <div style="min-width:0; flex:1;">
+            <div style="font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.file_name}">${r.file_name}</div>
+            <div style="font-size:10px; color:var(--muted); margin-top:2px;">
+              <span style="font-weight:600; color:var(--primary);">${cat}</span> · 
+              <span>${r.report_date || r.uploaded_at.split(' ')[0]}</span>
+            </div>
+          </div>
         </div>
-        <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.file_name}">${r.file_name}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px;">${new Date(r.uploaded_at).toLocaleDateString()}</div>
-        <div style="display:flex;gap:8px;margin-top:10px;">
-          <a href="../uploads/${r.file_path}" target="_blank" class="btn" style="flex:1;padding:4px;font-size:11px;background:var(--card);border:1px solid var(--border)">View</a>
-          <button onclick="deletePatientReport(${r.id})" class="btn" style="padding:4px 8px;font-size:11px;background:rgba(239, 68, 68, 0.1);color:var(--danger);border:none"><i class="fas fa-trash-alt"></i></button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button class="btn" style="background:var(--primary); color:#fff; border:none; padding:6px 10px; font-size:10px; border-radius:6px;" onclick="summarizePatientReport(${r.id}, '${r.file_name.replace(/'/g, "\\'")}')">
+            <i class="fas fa-robot"></i> AI
+          </button>
+          <a class="btn" href="../uploads/${r.file_path}" target="_blank" style="background:var(--card); color:var(--text); border:1px solid var(--border); padding:6px 10px; font-size:10px; border-radius:6px;">
+            <i class="fas fa-eye"></i>
+          </a>
+          <button class="btn" style="background:rgba(239,68,68,0.05); color:var(--danger); border:none; padding:6px 10px; font-size:10px; border-radius:6px;" onclick="deletePatientReport(${r.id})">
+            <i class="fas fa-trash-alt"></i>
+          </button>
         </div>
       </div>
     `;
@@ -2864,27 +2839,44 @@ function renderPatientReports(reports) {
 }
 
 function setupReportFilters() {
-  const search = document.getElementById('reportSearchInput');
   const typeFilter = document.getElementById('reportTypeFilter');
-
-  if (search) {
-    search.addEventListener('input', filterReports);
-    search.focus(); // Keep focus when typing
-  }
   if (typeFilter) typeFilter.addEventListener('change', filterReports);
 }
 
 function filterReports() {
-  const query = document.getElementById('reportSearchInput')?.value.toLowerCase() || '';
   const type = document.getElementById('reportTypeFilter')?.value || 'all';
-
-  const filtered = allPatientReports.filter(r => {
-    const matchesName = r.file_name.toLowerCase().includes(query);
-    const matchesType = type === 'all' || r.file_type === type;
-    return matchesName && matchesType;
-  });
-
+  const filtered = allPatientReports.filter(r => type === 'all' || r.file_type === type);
   renderPatientReports(filtered);
+}
+
+async function summarizePatientReport(reportId, filename) {
+  const modal = document.getElementById('aiSummaryModal');
+  const content = document.getElementById('aiSummaryContent');
+  if (!modal || !content) return;
+
+  content.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:15px;padding:20px;">
+      <i class="fas fa-circle-notch fa-spin" style="font-size:32px;color:var(--primary)"></i>
+      <p style="color:var(--muted);font-weight:600">Analyzing report...</p>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  try {
+    const res = await fetch('../api/ai_summarizer.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `report_id=${reportId}&filename=${encodeURIComponent(filename)}`
+    });
+    const json = await res.json();
+    if (json.success) {
+      setTimeout(() => { content.innerHTML = json.summary; }, 600);
+    } else {
+      content.innerHTML = `<div style="padding:20px;text-align:center;color:var(--danger)">${json.message || 'Error'}</div>`;
+    }
+  } catch (e) {
+    content.innerHTML = `<div style="padding:20px;text-align:center;color:var(--danger)">Connection error</div>`;
+  }
 }
 
 async function deletePatientReport(id) {

@@ -212,14 +212,16 @@ try {
                 file_name VARCHAR(255) NOT NULL,
                 file_path VARCHAR(255) NOT NULL,
                 file_type VARCHAR(50) NOT NULL,
+                category VARCHAR(50) DEFAULT 'General Report',
+                report_date DATE,
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_patient (patient_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, uploaded_at 
+            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, category, report_date, uploaded_at 
                                    FROM patient_reports 
                                    WHERE patient_id = ? 
-                                   ORDER BY uploaded_at DESC");
+                                   ORDER BY report_date DESC, uploaded_at DESC");
             $stmt->execute([$profileId]);
             $response['data'] = $stmt->fetchAll();
             echo json_encode($response);
@@ -310,9 +312,9 @@ try {
                 exit;
             }
 
-            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, uploaded_at 
+            $stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type, category, report_date, uploaded_at 
                                    FROM patient_reports WHERE patient_id = ? 
-                                   ORDER BY uploaded_at DESC");
+                                   ORDER BY report_date DESC, uploaded_at DESC");
             $stmt->execute([$patientId]);
             $response['data'] = $stmt->fetchAll();
             echo json_encode($response);

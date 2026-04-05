@@ -309,13 +309,16 @@ function uploadReport() {
     $allowed = ['pdf','doc','docx','jpg','jpeg','png'];
     if (!in_array($ext, $allowed)) { echo json_encode(['success'=>false,'message'=>'File type not allowed.']); return; }
     if ($file['size'] > 5*1024*1024) { echo json_encode(['success'=>false,'message'=>'File too large. Max 5MB.']); return; }
+    $category = trim($_POST['category'] ?? 'General');
+    $reportDate = $_POST['report_date'] ?? date('Y-m-d');
+    
     $uploadDir = __DIR__ . '/../uploads/reports/';
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
     $newName = 'report_' . $profileId . '_' . time() . '.' . $ext;
     $dest    = $uploadDir . $newName;
     if (!move_uploaded_file($file['tmp_name'], $dest)) { echo json_encode(['success'=>false,'message'=>'Upload failed.']); return; }
-    $pdo->prepare("INSERT INTO patient_reports (patient_id,file_name,file_path,file_type) VALUES (?,?,?,?)")
-        ->execute([$profileId, $file['name'], 'reports/' . $newName, $ext]);
+    $pdo->prepare("INSERT INTO patient_reports (patient_id,file_name,file_path,file_type,category,report_date) VALUES (?,?,?,?,?,?)")
+        ->execute([$profileId, $file['name'], 'reports/' . $newName, $ext, $category, $reportDate]);
     echo json_encode(['success'=>true,'message'=>'Report uploaded successfully!']);
 }
 
