@@ -150,6 +150,10 @@ function toggleSidebar() {
 function showToast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
   if (!container) return;
+
+  // Clear existing toasts to ensure only one is shown at a time
+  container.innerHTML = '';
+
   const icons = { success: 'check-circle', error: 'times-circle', warning: 'exclamation-circle', info: 'info-circle' };
   const toast = document.createElement('div');
   toast.className = `toast toast-${type === 'error' ? 'error' : type}`;
@@ -1978,9 +1982,73 @@ async function loadDoctorProfile() {
   if (removeBtn) removeBtn.style.display = imgUrl ? 'inline-flex' : 'none';
 }
 
-function downloadUserList() {
+async function downloadUserList() {
    const role = document.getElementById('userFilterRole')?.value || 'all';
-   window.open(`../api/export_pdf.php?role=${role}`, '_blank');
+
+   try {
+      const res = await fetch(`../api/dashboard_data.php?type=users&role=${role}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) throw new Error('Data fetch failed');
+
+      // Create hidden report container
+      const container = document.createElement('div');
+      container.style.padding = '40px';
+      container.style.fontFamily = "'Inter', sans-serif";
+      
+      const title = role === 'all' ? 'All Roles' : role.charAt(0).toUpperCase() + role.slice(1) + 's';
+      
+      container.innerHTML = `
+         <div style="text-align:center; border-bottom:2px solid #1e40af; margin-bottom:30px; padding-bottom:15px;">
+            <h1 style="color:#1e40af; margin:0;">Med Alert Plus</h1>
+            <p style="color:#64748b; margin:5px 0;">Comprehensive User Registration Report</p>
+         </div>
+         <div style="display:flex; justify-content:space-between; margin-bottom:20px; font-size:12px; color:#475569;">
+            <span><strong>Role Filter:</strong> ${title}</span>
+            <span><strong>Generated:</strong> ${new Date().toLocaleString()}</span>
+         </div>
+         <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+               <tr style="background:#f8fafc; border:1px solid #e2e8f0;">
+                  <th style="padding:10px; text-align:left; border:1px solid #e2e8f0;">Name</th>
+                  <th style="padding:10px; text-align:left; border:1px solid #e2e8f0;">Email</th>
+                  <th style="padding:10px; text-align:left; border:1px solid #e2e8f0;">Phone</th>
+                  <th style="padding:10px; text-align:center; border:1px solid #e2e8f0;">Role</th>
+                  <th style="padding:10px; text-align:center; border:1px solid #e2e8f0;">Status</th>
+               </tr>
+            </thead>
+            <tbody>
+               ${json.data.map(u => `
+                  <tr>
+                     <td style="padding:10px; border:1px solid #e2e8f0;"><strong>${u.name}</strong></td>
+                     <td style="padding:10px; border:1px solid #e2e8f0;">${u.email}</td>
+                     <td style="padding:10px; border:1px solid #e2e8f0;">${u.phone || 'N/A'}</td>
+                     <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${u.role.toUpperCase()}</td>
+                     <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${u.status.toUpperCase()}</td>
+                  </tr>
+               `).join('')}
+            </tbody>
+         </table>
+         <div style="margin-top:30px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #f1f5f9; padding-top:10px;">
+            Confidential Admin Report - Generated via Med Alert Plus Dashboard
+         </div>
+      `;
+
+      const opt = {
+         margin: 10,
+         filename: `User_Report_${role}_${new Date().getTime()}.pdf`,
+         image: { type: 'jpeg', quality: 0.98 },
+         html2canvas: { scale: 2 },
+         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().from(container).set(opt).save();
+      showToast('Report downloaded successfully', 'success');
+
+   } catch (err) {
+      console.error(err);
+      showToast('Failed to generate report', 'error');
+   }
 }
 
 function showHomeRemedies() {
