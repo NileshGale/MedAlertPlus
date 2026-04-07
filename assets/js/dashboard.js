@@ -157,9 +157,9 @@ function showToast(message, type = 'info') {
   const icons = { success: 'check-circle', error: 'times-circle', warning: 'exclamation-circle', info: 'info-circle' };
   const toast = document.createElement('div');
   toast.className = `toast toast-${type === 'error' ? 'error' : type}`;
-  toast.innerHTML = `<i class="fas fa-${icons[type] || 'info-circle'}"></i> ${message}`;
+  toast.innerHTML = `<i class="fas fa-${icons[type] || 'info-circle'}"></i> <span style="flex:1; word-break:break-word;">${message}</span> <i class="fas fa-times" style="cursor:pointer; opacity:0.6; font-size:16px; padding:4px;" onclick="this.closest('.toast').remove()" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"></i>`;
   container.appendChild(toast);
-  setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(30px)'; setTimeout(() => toast.remove(), 300); }, 3500);
+  setTimeout(() => { if (document.body.contains(toast)) { toast.style.opacity = '0'; toast.style.transform = 'translateX(30px)'; setTimeout(() => { if (document.body.contains(toast)) toast.remove(); }, 300); } }, 3500);
 }
 
 function formatApptTimeDisplay(t) {

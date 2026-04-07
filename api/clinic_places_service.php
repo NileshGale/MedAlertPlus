@@ -80,8 +80,8 @@ function clinicGooglePlaceDetails(string $placeId, string $key): array
 
 function clinicGoogleTextSearchNear(float $lat, float $lng, string $key): array
 {
-    $url = 'https://maps.googleapis.com/maps/api/place/textsearch/json?query=' . rawurlencode('medical clinic hospital doctor health center')
-        . '&location=' . $lat . ',' . $lng . '&radius=10000&key=' . rawurlencode($key);
+    // Use nearbysearch with rankby=distance to get the absolute closest results first
+    $url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=' . $lat . ',' . $lng . '&rankby=distance&keyword=' . rawurlencode('clinic OR hospital OR doctor') . '&key=' . rawurlencode($key);
     $data = clinicHttpJson($url);
     if (!$data || !in_array($data['status'] ?? '', ['OK', 'ZERO_RESULTS'], true)) {
         return [];
@@ -134,7 +134,7 @@ function clinicNominatimSearch(string $query, int $limit = 8): array
     if ($query === '') {
         return [];
     }
-    $url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=' . max(1, min(20, $limit))
+    $url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=in&limit=' . max(1, min(20, $limit))
         . '&q=' . rawurlencode($query);
     $data = clinicHttpJson($url, 18);
     return is_array($data) ? $data : [];
@@ -360,7 +360,7 @@ function mergeClinicSearchResults(PDO $pdo, array $get): array
             usleep(60000);
             $plat = isset($p['geometry']['location']['lat']) ? (float) $p['geometry']['location']['lat'] : null;
             $plng = isset($p['geometry']['location']['lng']) ? (float) $p['geometry']['location']['lng'] : null;
-            $addr = (string) ($p['formatted_address'] ?? '');
+            $addr = (string) ($p['formatted_address'] ?? ($p['vicinity'] ?? ''));
             $name = (string) ($p['name'] ?? 'Clinic');
             $ext[] = [
                 'id' => 0,
