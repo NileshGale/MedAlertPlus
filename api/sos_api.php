@@ -51,6 +51,28 @@ if ($action === 'trigger_sos') {
         $sentCount++;
     }
 
+    // 3. Alert all active Doctors via in-app Notifications
+    $stmtDocs = $pdo->query("SELECT u.id, u.phone FROM users u JOIN doctors d ON u.id = d.user_id WHERE u.role = 'doctor' AND u.status = 'active' AND d.approval_status = 'approved'");
+    $doctors = $stmtDocs->fetchAll();
+    
+    $notifStmt = $pdo->prepare("INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, 'danger')");
+    $message = "URGENT SOS! " . $user['name'] . " requires immediate medical assistance.";
+    if ($lat && $lng) {
+        $message .= " Location: https://maps.google.com/?q=" . urlencode("$lat,$lng");
+    }
+    
+    foreach ($doctors as $doc) {
+        $notifStmt->execute([$doc['id'], 'EMERGENCY SOS ALERT', $message]);
+        
+        // 4. SMS / WhatsApp Scaffolding (Future-Proofing)
+        // Ensure you configure API credentials in config/mail.php before uncommenting
+        $phone = trim((string)$doc['phone']);
+        if (!empty($phone)) {
+            // sendTwilioSMS($phone, $message);
+            // sendWhatsAppMessage($phone, $message);
+        }
+    }
+
     echo json_encode(['success' => true, 'message' => "SOS Triggered. $sentCount alerts sent."]);
     exit;
 }

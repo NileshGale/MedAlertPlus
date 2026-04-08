@@ -95,6 +95,21 @@ try {
             echo json_encode($response);
             exit;
 
+        case 'doctor_sos_check':
+            if ($role !== 'doctor') { echo json_encode(['success'=>false]); exit; }
+            $userId = $_SESSION['user_id'];
+            $stmt = $pdo->prepare("SELECT id, message, created_at FROM notifications WHERE user_id = ? AND title = 'EMERGENCY SOS ALERT' AND is_read = 0 ORDER BY created_at DESC LIMIT 1");
+            $stmt->execute([$userId]);
+            $alert = $stmt->fetch();
+            if ($alert) {
+                // Mark it as read to prevent endless pinging
+                $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE id = ?")->execute([$alert['id']]);
+                echo json_encode(['success'=>true, 'alert'=>$alert]);
+            } else {
+                echo json_encode(['success'=>false]);
+            }
+            exit;
+
         case 'users':
             if ($role !== 'admin') { echo json_encode(['success'=>false]); exit; }
             $filterRole = $_GET['role'] ?? 'all';

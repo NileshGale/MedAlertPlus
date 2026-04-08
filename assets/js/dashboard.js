@@ -8,8 +8,8 @@ function showConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', 
     // Remove any existing modal
     document.getElementById('customConfirmOverlay')?.remove();
 
-    const colors = { warning: '#f59e0b', danger: '#ef4444', info: '#3b82f6' };
-    const icons = { warning: 'exclamation-triangle', danger: 'trash-alt', info: 'info-circle' };
+    const colors = { warning: '#f59e0b', danger: '#ef4444', info: '#3b82f6', emergency: '#ef4444' };
+    const icons = { warning: 'exclamation-triangle', danger: 'trash-alt', info: 'info-circle', emergency: 'bell' };
     const accentColor = colors[type] || colors.warning;
     const iconName = icons[type] || icons.warning;
 
@@ -237,9 +237,41 @@ function initTheme() {
 }
 document.addEventListener('DOMContentLoaded', initTheme);
 
+// ---- Doctor SOS Monitor ----
+function playEmergencyBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 1.0);
+    osc.stop(ctx.currentTime + 1.0);
+  } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+   if (document.getElementById('doctorAppointmentsList')) {
+       setInterval(async () => {
+           try {
+               const res = await fetch('../api/dashboard_data.php?type=doctor_sos_check');
+               const data = await res.json();
+               if (data.success && data.alert) {
+                   playEmergencyBeep();
+                   showConfirm(data.alert.message, { type: 'emergency', confirmText: 'Acknowledge', cancelText: 'Close' });
+               }
+           } catch(e) {}
+       }, 10000);
+   }
+});
+
 // ---- Emergency SOS ----
 async function triggerSOS() {
-  if (!await showConfirm('This will alert your emergency contacts and nearby doctors.', { confirmText: 'Send SOS', type: 'danger' })) return;
+  if (!await showConfirm('This will alert your emergency contacts and nearby doctors.', { confirmText: 'Send SOS', type: 'emergency' })) return;
   
   showToast('Fetching location...', 'info');
   navigator.geolocation.getCurrentPosition(async (pos) => {
