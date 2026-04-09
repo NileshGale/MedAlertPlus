@@ -55,6 +55,71 @@ function showConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', 
   });
 }
 
+// ---- Custom Prompt Modal (replaces native prompt()) ----
+function showPrompt(message, { defaultValue = '', type = 'info', placeholder = 'Type here...' } = {}) {
+  return new Promise((resolve) => {
+    // Remove any existing modal
+    document.getElementById('customPromptOverlay')?.remove();
+
+    const colors = { warning: '#f59e0b', danger: '#ef4444', info: '#3b82f6' };
+    const icons = { warning: 'exclamation-triangle', danger: 'trash-alt', info: 'pen-nib' };
+    const accentColor = colors[type] || colors.info;
+    const iconName = icons[type] || icons.info;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'customPromptOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;animation:promptFadeIn .2s ease';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:32px;max-width:460px;width:90%;box-shadow:0 24px 48px rgba(0,0,0,0.15);animation:promptSlideIn .25s ease">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+          <div style="width:48px;height:48px;border-radius:12px;background:${accentColor}15;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fas fa-${iconName}" style="font-size:20px;color:${accentColor}"></i>
+          </div>
+          <h3 style="font-size:17px;font-weight:700;color:#1e293b;margin:0">${message}</h3>
+        </div>
+        
+        <div style="margin-bottom:24px">
+          <input type="text" id="promptInput" value="${defaultValue}" placeholder="${placeholder}" 
+                 style="width:100%;padding:14px;border:1px solid #e2e8f0;border-radius:10px;font-family:inherit;font-size:14px;outline:none;transition:all .2s;border-color:${accentColor}40" />
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:flex-end">
+          <button id="promptCancel" style="padding:10px 20px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s">Cancel</button>
+          <button id="promptOk" style="padding:10px 24px;border-radius:10px;border:none;background:${accentColor};color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s;box-shadow:0 4px 12px ${accentColor}40">Save</button>
+        </div>
+      </div>
+    `;
+
+    if (!document.getElementById('promptModalStyles')) {
+      const style = document.createElement('style');
+      style.id = 'promptModalStyles';
+      style.textContent = `
+        @keyframes promptFadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes promptSlideIn { from { opacity: 0; transform: scale(0.95) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+        #promptInput:focus { border-color: ${accentColor} !important; box-shadow: 0 0 0 4px ${accentColor}10 !important; }
+        #promptCancel:hover { background: #f8fafc !important; border-color: #cbd5e1 !important; }
+        #promptOk:hover { filter: brightness(1.1); transform: translateY(-1px); }
+      `;
+      document.head.appendChild(style);
+    }
+
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#promptInput');
+    input.focus();
+    if (defaultValue) input.setSelectionRange(defaultValue.length, defaultValue.length);
+
+    const cleanup = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#promptOk').addEventListener('click', () => cleanup(input.value));
+    overlay.querySelector('#promptCancel').addEventListener('click', () => cleanup(null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+    
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); cleanup(input.value); }
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(null); }
+    });
+  });
+}
+
 /** Patient overview stat cards → tab + optional appointment filter */
 function patientOverviewStatGo(target) {
   if (target === 'medicines') {
@@ -1109,10 +1174,11 @@ async function toggleClinicStatus() {
   }
 }
 
-function manageAppointment(id) {
-   const notes = prompt('Enter Patient Notes/Diagnosis:');
+async function manageAppointment(id) {
+   const notes = await showPrompt('Enter Patient Notes/Diagnosis:');
    if (notes === null) return;
-   const presc = prompt('Enter Prescription:');
+   const presc = await showPrompt('Enter Prescription:');
+   if (presc === null) return;
    fetch('../api/doctor_api.php', {
       method: 'POST',
       headers: {'Content-Type':'application/x-www-form-urlencoded'},
@@ -1122,10 +1188,10 @@ function manageAppointment(id) {
    });
 }
 
-function manageMeetLink(id, current) {
+async function manageMeetLink(id, current) {
    const raw = current && current !== 'null' ? decodeURIComponent(current) : 'https://meet.google.com/';
-   const link = prompt('Enter Google Meet Link:', raw);
-   if (!link) return;
+   const link = await showPrompt('Enter Google Meet Link:', { defaultValue: raw });
+   if (link === null) return;
    fetch('../api/doctor_api.php', {
       method: 'POST',
       headers: {'Content-Type':'application/x-www-form-urlencoded'},
