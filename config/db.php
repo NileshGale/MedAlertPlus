@@ -35,6 +35,12 @@ try {
 
     require_once __DIR__ . '/appointment_reschedule_schema.php';
     ensureAppointmentRescheduleSchema($pdo);
+
+    require_once __DIR__ . '/profile_image_schema.php';
+    ensureProfileImageSchema($pdo);
+
+    require_once __DIR__ . '/upload_schema_fix.php';
+    ensureUploadSchemaFix($pdo);
 } catch (PDOException $e) {
     die("Database Connection Failed: " . $e->getMessage());
 }

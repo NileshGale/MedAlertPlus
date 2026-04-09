@@ -1,9 +1,15 @@
 <?php
-require_once 'config/db.php';
+require_once __DIR__ . '/config/db.php';
 try {
-    $stmt = $pdo->query("DESCRIBE medicine_reminders");
-    $fields = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode($fields, JSON_PRETTY_PRINT);
+    $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    echo "Tables: " . implode(', ', $tables) . "\n";
+    foreach ($tables as $table) {
+        echo "\nTable: $table\n";
+        $columns = $pdo->query("DESCRIBE $table")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($columns as $col) {
+            echo "  {$col['Field']} - {$col['Type']}\n";
+        }
+    }
 } catch (Exception $e) {
-    echo $e->getMessage();
+    echo "Error: " . $e->getMessage();
 }
