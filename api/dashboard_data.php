@@ -2,6 +2,31 @@
 session_start();
 require_once '../config/db.php';
 
+function resolveSmartClinicStatus($pdo, $docId, $currentStatus, $updatedAt) {
+    if (!$docId) return $currentStatus;
+    date_default_timezone_set('Asia/Kolkata');
+    $now = time();
+    $hour = (int)date('H', $now);
+    
+    // Day Window: 09:00 - 22:00 | Night Window: 22:00 - 09:00
+    if ($hour >= 9 && $hour < 22) {
+        $windowStart = strtotime('09:00:00');
+        $defaultStatus = 'open';
+    } else {
+        if ($hour >= 22) $windowStart = strtotime('22:00:00');
+        else $windowStart = strtotime('22:00:00', strtotime('yesterday'));
+        $defaultStatus = 'closed';
+    }
+
+    $lastUpdate = $updatedAt ? strtotime($updatedAt) : 0;
+    
+    // If last update was before the current window started, use the default
+    if ($lastUpdate < $windowStart) {
+        return $defaultStatus;
+    }
+    return $currentStatus;
+}
+
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -27,11 +52,14 @@ try {
         ];
         
         if ($role === 'doctor' && $profileId) {
-            $stmt = $pdo->prepare("SELECT specialization, clinic_status FROM doctors WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT specialization, clinic_status, clinic_status_updated_at FROM doctors WHERE id = ?");
             $stmt->execute([$profileId]);
             $docInfo = $stmt->fetch();
             $response['user']['specialization'] = $docInfo['specialization'] ?? 'Specialist';
-            $response['user']['clinic_status'] = $docInfo['clinic_status'] ?? 'closed';
+            
+            $dbStatus = $docInfo['clinic_status'] ?? 'closed';
+            $dbUpdate = $docInfo['clinic_status_updated_at'] ?? null;
+            $response['user']['clinic_status'] = resolveSmartClinicStatus($pdo, $profileId, $dbStatus, $dbUpdate);
         }
         
         $type = 'all'; // Continue to fetch stats below
@@ -185,13 +213,27 @@ try {
 
         case 'available_doctors':
             if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT d.id, u.name AS doctor_name, d.specialization, d.clinic_name, d.clinic_status
+            $stmt = $pdo->prepare("SELECT d.id, u.name AS doctor_name, d.specialization, d.clinic_name, d.clinic_status, d.clinic_status_updated_at
                                    FROM doctors d
                                    JOIN users u ON d.user_id = u.id
                                    WHERE d.approval_status = 'approved' AND u.status = 'active'
-                                   ORDER BY (d.clinic_status='open') DESC, u.name ASC");
+                                   ORDER BY u.name ASC");
             $stmt->execute();
-            $response['data'] = $stmt->fetchAll();
+            $raw = $stmt->fetchAll();
+            
+            // Process Smart Status for each doctor
+            foreach ($raw as &$doc) {
+                $doc['clinic_status'] = resolveSmartClinicStatus($pdo, $doc['id'], $doc['clinic_status'], $doc['clinic_status_updated_at']);
+                unset($doc['clinic_status_updated_at']);
+            }
+            
+            // Re-sort by OPEN status first
+            usort($raw, function($a, $b) {
+                if ($a['clinic_status'] === $b['clinic_status']) return 0;
+                return ($a['clinic_status'] === 'open') ? -1 : 1;
+            });
+            
+            $response['data'] = $raw;
             echo json_encode($response);
             exit;
 
@@ -337,13 +379,18 @@ try {
 
         case 'doctor_profile':
             if ($role !== 'doctor') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, d.specialization, d.qualification, d.experience_years, d.fees, d.clinic_name, d.clinic_address, d.clinic_phone, d.about, d.clinic_status, d.profile_image
+            $stmt = $pdo->prepare("SELECT u.name, u.email, u.phone, d.specialization, d.qualification, d.experience_years, d.fees, d.clinic_name, d.clinic_address, d.clinic_phone, d.about, d.clinic_status, d.clinic_status_updated_at, d.profile_image
                                    FROM users u
                                    JOIN doctors d ON d.user_id = u.id
                                    WHERE d.id = ?
                                    LIMIT 1");
             $stmt->execute([$profileId]);
-            $response['data'] = $stmt->fetch() ?: [];
+            $profile = $stmt->fetch() ?: [];
+            if ($profile) {
+                $profile['clinic_status'] = resolveSmartClinicStatus($pdo, $profileId, $profile['clinic_status'], $profile['clinic_status_updated_at']);
+                unset($profile['clinic_status_updated_at']);
+            }
+            $response['data'] = $profile;
             echo json_encode($response);
             exit;
 

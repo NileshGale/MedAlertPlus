@@ -1161,6 +1161,16 @@ async function toggleClinicStatus() {
   const current = label.innerText.toLowerCase();
   const next = current === 'open' ? 'closed' : 'open';
   
+  const hour = new Date().getHours();
+  const isNight = (hour < 9 || hour >= 22);
+
+  // If opening at night or closing during the day, ask for confirmation
+  if (next === 'open' && isNight) {
+     if (!await showConfirm('It is currently outside standard hours (9 AM - 10 PM). Do you want to manually OPEN the clinic?', { confirmText: 'Yes, Open', type: 'info' })) return;
+  } else if (next === 'closed' && !isNight) {
+     if (!await showConfirm('It is currently standard working hours. Do you want to manually CLOSE the clinic?', { confirmText: 'Yes, Close', type: 'warning' })) return;
+  }
+
   const res = await fetch('../api/doctor_api.php', { 
      method: 'POST', 
      headers: {'Content-Type':'application/x-www-form-urlencoded'}, 
@@ -1171,6 +1181,8 @@ async function toggleClinicStatus() {
      label.innerText = next;
      label.className = `badge badge-${next==='open'?'success':'danger'}`;
      showToast('Clinic status updated to ' + next.toUpperCase(), 'info');
+  } else {
+     showToast(data.message || 'Action failed', 'error');
   }
 }
 

@@ -145,7 +145,8 @@ function saveSchedule() {
 function toggleClinicStatus() {
     global $pdo, $profileId;
     $status = ($_POST['status'] ?? '') === 'open' ? 'open' : 'closed';
-    $pdo->prepare("UPDATE doctors SET clinic_status=? WHERE id=?")->execute([$status,$profileId]);
+    // Update status and explicit timestamp to mark a manual override
+    $pdo->prepare("UPDATE doctors SET clinic_status=?, clinic_status_updated_at=NOW() WHERE id=?")->execute([$status,$profileId]);
     echo json_encode(['success'=>true]);
 }
 
