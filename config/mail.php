@@ -238,8 +238,53 @@ function sendAdminAccountEmail(string $toEmail, string $recipientName, string $s
         $mail->send();
         return true;
     } catch (Exception $e) {
-        error_log("Admin account mail failed: {$mail->ErrorInfo}");
+        error_log("Admin mail failed: {$mail->ErrorInfo}");
         return false;
     }
 }
-?>
+
+function sendAppointmentUpdateEmail(string $toEmail, string $recipientName, string $title, string $message): bool
+{
+    if (!class_exists(PHPMailer::class)) {
+        return false;
+    }
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = MAIL_HOST;
+        $mail->SMTPAuth   = true;
+        $mail->Username   = MAIL_USERNAME;
+        $mail->Password   = MAIL_PASSWORD;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = MAIL_PORT;
+
+        $mail->setFrom(MAIL_USERNAME, 'Med-Alert-Plus');
+        $mail->addAddress($toEmail, $recipientName);
+
+        $mail->isHTML(true);
+        $mail->Subject = $title;
+        
+        $safeName = htmlspecialchars($recipientName, ENT_QUOTES, 'UTF-8');
+        $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $safeMsg = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
+
+        $mail->Body = "
+        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;'>
+            <h2 style='color: #1e40af; text-align: center;'>{$safeTitle}</h2>
+            <p>Hello <strong>{$safeName}</strong>,</p>
+            <div style='background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; line-height: 1.6;'>
+                {$safeMsg}
+            </div>
+            <p>You can view more details by logging into your dashboard.</p>
+            <hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;' />
+            <p style='font-size: 12px; color: #888; text-align: center;'>&copy; " . date('Y') . " Med-Alert-Plus</p>
+        </div>";
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("Appointment update mail failed: {$mail->ErrorInfo}");
+        return false;
+    }
+}

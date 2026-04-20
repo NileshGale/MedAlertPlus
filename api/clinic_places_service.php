@@ -295,8 +295,28 @@ function mergeClinicSearchResults(PDO $pdo, array $get): array
             if (!empty($osm[0]['lat']) && !empty($osm[0]['lon'])) {
                 $lat = (float) $osm[0]['lat'];
                 $lng = (float) $osm[0]['lon'];
+            } else {
+                // FALLBACK 1: Try Postal Code + Country (very targeted)
+                if ($postal !== '') {
+                    $fbPostal = implode(', ', array_filter([$postal, $country]));
+                    $osm = clinicNominatimSearch($fbPostal, 1);
+                    if (!empty($osm[0]['lat']) && !empty($osm[0]['lon'])) {
+                        $lat = (float) $osm[0]['lat'];
+                        $lng = (float) $osm[0]['lon'];
+                    }
+                }
+                // FALLBACK 2: Try City + State + Country
+                if ($lat === null && ($city !== '' || $state !== '')) {
+                    $fbCity = implode(', ', array_filter([$city, $state, $country]));
+                    $osm = clinicNominatimSearch($fbCity, 1);
+                    if (!empty($osm[0]['lat']) && !empty($osm[0]['lon'])) {
+                        $lat = (float) $osm[0]['lat'];
+                        $lng = (float) $osm[0]['lon'];
+                    }
+                }
             }
         }
+
     }
 
     $dbSearch = $city !== '' ? $city : ($legacyQuery !== '' ? $legacyQuery : $fullAddress);

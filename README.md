@@ -61,6 +61,72 @@ The "Brain" of the system, providing oversight and data insights.
 
 ---
 
+## 📖 Feature Guide & User Manual
+
+### 👤 Patient Module (Health Companion)
+*How to use the platform as a patient:*
+
+#### 1. **Add & Track Medication**
+- **Step 1**: Navigate to the **Medicines** tab in the sidebar.
+- **Step 2**: Click the `[+ Add Medicine]` button.
+- **Step 3**: Enter the medicine name (e.g., "Aspirin") and select the frequency (e.g., "Twice a day").
+- **Step 4**: The system will automatically generate slots (Morning/Evening). You will receive an **Email Reminder** 5 minutes before each dose.
+- **Step 5**: Click the `[Checkmark]` icon on your dashboard cards to mark a dose as "Taken."
+
+#### 2. **Book an Appointment**
+- **Step 1**: Go to the **Find Clinics** tab.
+- **Step 2**: Use the search bar to find specialized clinics (e.g., "Cardiology") near you.
+- **Step 3**: Select a doctor and click `[Book Appointment]`.
+- **Step 4**: Choose between **Physical** or **Online** consultation and select your preferred time.
+
+#### 3. **AI Symptom Checker**
+- **Step 1**: Click **Symptom Checker** in the sidebar.
+- **Step 2**: Type how you are feeling (e.g., "I have a sharp headache and nausea").
+- **Step 3**: Click `[Analyze Symptoms]`. A "Feature Info" popup will appear with AI-generated suggestions and a summary.
+
+#### 4. **SOS Emergency**
+- **Single Click**: Tap the floating **[SOS]** button.
+- **Behind the Scenes**: The app captures your exact GPS location and sends a high-priority alert to every active doctor and administrator in the system.
+
+---
+
+### 👨‍⚕️ Doctor Module (Virtual Clinic)
+*How to manage your clinic and patients:*
+
+#### 1. **Clinic Status (Smart Toggle)**
+- **Default Behavior**: The clinic is automatically **OPEN** from 9 AM to 10 PM.
+- **Manual Override**: Click the `[Open/Closed]` badge in the top bar to change your status manually.
+- **Override Popup**: If you try to open at night or close during the day, a confirmation modal will ask: *"Do you want to manually override defaults?"* Click **Confirm** to proceed.
+
+#### 2. **Managing Appointments**
+- **Confirm**: Click `[Confirm]` on a pending request to notify the patient.
+- **Record Clinical Data**: After a session, click `[Record]`.
+    - **Step A**: Enter the **Diagnosis/Notes** in the first modal and click Save.
+    - **Step B**: Enter the **Prescription** in the second modal.
+- **Reschedule**: Click `[Calendar icon]` to propose a new date/time if you are unavailable.
+- **Virtual Links**: Click the `[Video icon]` to save a Google Meet link for online consultations.
+
+#### 3. **Patient History**
+- **Step 1**: Click the **Patients** tab.
+- **Step 2**: Select a patient to view their **Vitals History** (BP, Sugar) and **Medical Reports** they have uploaded.
+
+---
+
+### 🛡️ Admin Module (Global Control)
+*How to govern the platform:*
+
+#### 1. **Doctor Approvals**
+- **Step 1**: Go to the **Approvals** tab.
+- **Step 2**: Review the doctor's license number and qualifications.
+- **Step 3**: Click `[Approve]` to grant them access to the platform or `[Reject]` if the credentials are invalid.
+
+#### 2. **Emergency Monitoring**
+- **Step 1**: Open the **SOS Logs** tab.
+- **Step 2**: View active emergencies on the live list.
+- **Step 3**: Click `[Resolved]` once help has been dispatched to the patient's coordinates.
+
+---
+
 ## 📂 Project Directory Structure
 
 ```text

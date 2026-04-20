@@ -1,6 +1,11 @@
 <?php
 session_start();
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/mail.php';
+function normalizeAppointmentTimeForDb($t) {
+    if (!$t) return null;
+    return date('H:i:s', strtotime($t));
+}
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'doctor') {
@@ -32,11 +37,22 @@ function confirmAppointment() {
     $id = intval($_POST['id'] ?? 0);
     $pdo->prepare("UPDATE appointments SET status='confirmed' WHERE id=? AND doctor_id=?")->execute([$id,$profileId]);
     // Notify patient
-    $appt = $pdo->prepare("SELECT a.*, p.user_id as p_user_id FROM appointments a JOIN patients p ON a.patient_id=p.id WHERE a.id=?");
+    $appt = $pdo->prepare("SELECT a.*, p.user_id as p_user_id, u.name AS p_name, u.email AS p_email 
+                           FROM appointments a 
+                           JOIN patients p ON a.patient_id=p.id 
+                           JOIN users u ON p.user_id=u.id 
+                           WHERE a.id=?");
     $appt->execute([$id]); $row = $appt->fetch();
     if ($row) {
+        $dateStr = date('M d, Y', strtotime($row['appointment_date']));
+        $timeStr = date('h:i A', strtotime($row['appointment_time']));
+        $title = 'Appointment Confirmed';
+        $msg = "Your appointment on {$dateStr} at {$timeStr} has been confirmed by the doctor.";
+        
         $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'success')")
-            ->execute([$row['p_user_id'],'Appointment Confirmed','Your appointment on '.date('M d, Y',strtotime($row['appointment_date'])).' at '.date('h:i A',strtotime($row['appointment_time'])).' has been confirmed.']);
+            ->execute([$row['p_user_id'], $title, $msg]);
+            
+        sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
     }
     echo json_encode(['success'=>true]);
 }
@@ -46,12 +62,22 @@ function cancelAppointment() {
     $id = intval($_POST['id'] ?? 0);
     ensureAppointmentRescheduleSchema($pdo);
     $pdo->prepare("UPDATE appointments SET status='cancelled', proposed_appointment_date=NULL, proposed_appointment_time=NULL WHERE id=? AND doctor_id=?")->execute([$id,$profileId]);
-    $appt = $pdo->prepare("SELECT a.*, p.user_id as p_user_id FROM appointments a JOIN patients p ON a.patient_id=p.id WHERE a.id=?");
+    $appt = $pdo->prepare("SELECT a.*, p.user_id as p_user_id, u.name AS p_name, u.email AS p_email 
+                           FROM appointments a 
+                           JOIN patients p ON a.patient_id=p.id 
+                           JOIN users u ON p.user_id=u.id 
+                           WHERE a.id=?");
     $appt->execute([$id]); $row = $appt->fetch();
     if ($row) {
+        $dateStr = date('M d, Y', strtotime($row['appointment_date']));
+        $title = 'Appointment Cancelled';
+        $msg = "Your appointment on {$dateStr} has been cancelled by the doctor.";
+
         $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND appointment_id=? AND cta='reschedule'")->execute([(int)$row['p_user_id'], $id]);
         $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'warning')")
-            ->execute([$row['p_user_id'],'Appointment Cancelled','Your appointment on '.date('M d, Y',strtotime($row['appointment_date'])).' has been cancelled by the doctor.']);
+            ->execute([$row['p_user_id'], $title, $msg]);
+            
+        sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
     }
     echo json_encode(['success'=>true]);
 }
@@ -91,11 +117,21 @@ function saveMeetLink() {
     $link = trim($_POST['link'] ?? '');
     $pdo->prepare("UPDATE appointments SET meet_link=? WHERE id=? AND doctor_id=?")->execute([$link,$id,$profileId]);
     // Notify patient
-    $appt = $pdo->prepare("SELECT a.*, p.user_id as p_user_id FROM appointments a JOIN patients p ON a.patient_id=p.id WHERE a.id=?");
+    $appt = $pdo->prepare("SELECT a.*, p.user_id as p_user_id, u.name AS p_name, u.email AS p_email 
+                           FROM appointments a 
+                           JOIN patients p ON a.patient_id=p.id 
+                           JOIN users u ON p.user_id=u.id 
+                           WHERE a.id=?");
     $appt->execute([$id]); $row = $appt->fetch();
     if ($row) {
+        $dateStr = date('M d, Y', strtotime($row['appointment_date']));
+        $title = 'Meet Link Added';
+        $msg = "Your doctor has added a Google Meet link for your appointment on {$dateStr}.\n\nLink: {$link}";
+
         $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'info')")
-            ->execute([$row['p_user_id'],'Meet Link Added','Your doctor has added a Google Meet link for your appointment on '.date('M d, Y',strtotime($row['appointment_date'])). '. Link: '.$link]);
+            ->execute([$row['p_user_id'], $title, $msg]);
+            
+        sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
     }
     echo json_encode(['success'=>true]);
 }
@@ -263,10 +299,13 @@ function proposeReschedule() {
 
     $oldWhen = date('M d, Y', strtotime($row['appointment_date'])) . ' at ' . date('h:i A', strtotime($row['appointment_time']));
     $newWhen = date('M d, Y', strtotime($date)) . ' at ' . date('h:i A', strtotime($time));
-    $msg = 'Dr. requested a new time for your appointment. Was: ' . $oldWhen . '. Proposed: ' . $newWhen . '. Please accept or reject.';
+    $title = 'Appointment Time Update';
+    $msg = "Dr. requested a new time for your appointment.\nWas: {$oldWhen}\nProposed: {$newWhen}\n\nPlease log in to accept or reject this change.";
 
     $pdo->prepare("INSERT INTO notifications (user_id, title, message, type, appointment_id, cta) VALUES (?, ?, ?, 'warning', ?, 'reschedule')")
-        ->execute([$pUserId, 'Appointment time update', $msg, $id]);
+        ->execute([$pUserId, $title, $msg, $id]);
+
+    sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
 
     echo json_encode(['success' => true]);
 }
