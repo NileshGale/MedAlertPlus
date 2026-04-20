@@ -1,15 +1,23 @@
 <?php
+error_reporting(0);
+ini_set('display_errors', 0);
+ob_start();
+date_default_timezone_set('Asia/Kolkata');
+
 session_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/mail.php';
-function normalizeAppointmentTimeForDb($t) {
-    if (!$t) return null;
-    return date('H:i:s', strtotime($t));
-}
+
 header('Content-Type: application/json');
 
+function sendJsonResponse($data) {
+    ob_clean();
+    echo json_encode($data);
+    exit;
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'doctor') {
-    echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit;
+    sendJsonResponse(['success' => false, 'message' => 'Unauthorized']);
 }
 $userId    = $_SESSION['user_id'];
 $profileId = $_SESSION['profile_id'];
@@ -29,7 +37,7 @@ switch ($action) {
     case 'mark_notif_read':      markNotifRead();       break;
     case 'propose_reschedule':   proposeReschedule();   break;
     case 'delete_cancelled_appointment': deleteCancelledAppointment(); break;
-    default: echo json_encode(['success'=>false,'message'=>'Invalid action']);
+    default: sendJsonResponse(['success'=>false,'message'=>'Invalid action']);
 }
 
 function confirmAppointment() {
@@ -54,7 +62,7 @@ function confirmAppointment() {
             
         sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
     }
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function cancelAppointment() {
@@ -79,14 +87,14 @@ function cancelAppointment() {
             
         sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
     }
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function completeAppointment() {
     global $pdo, $profileId;
     $id = intval($_POST['id'] ?? 0);
     $pdo->prepare("UPDATE appointments SET status='completed' WHERE id=? AND doctor_id=?")->execute([$id,$profileId]);
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function deleteCancelledAppointment() {
@@ -108,7 +116,7 @@ function deleteCancelledAppointment() {
     } catch (Throwable $e) {
     }
     $pdo->prepare('DELETE FROM appointments WHERE id = ? AND doctor_id = ?')->execute([$id, $profileId]);
-    echo json_encode(['success' => true]);
+    sendJsonResponse(['success' => true]);
 }
 
 function saveMeetLink() {
@@ -133,7 +141,7 @@ function saveMeetLink() {
             
         sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
     }
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function saveNotes() {
@@ -149,33 +157,43 @@ function saveNotes() {
         $pdo->prepare("INSERT INTO notifications (user_id,title,message,type) VALUES (?,?,?,'success')")
             ->execute([$row['p_user_id'],'Doctor Added Notes','Your doctor has added notes and prescription for your appointment.']);
     }
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function saveSchedule() {
     global $pdo, $profileId;
-    $scheduleData = json_decode($_POST['schedule'] ?? '[]', true);
-    if (!is_array($scheduleData)) { echo json_encode(['success'=>false,'message'=>'Invalid data.']); return; }
-    foreach ($scheduleData as $item) {
-        $day       = $item['day'] ?? '';
-        $available = intval($item['available'] ?? 0);
-        $start     = $item['start'] ?? '09:00';
-        $end       = $item['end'] ?? '17:00';
-        $slot      = intval($item['slot'] ?? 30);
-        $days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-        if (!in_array($day, $days)) continue;
-        // UPSERT
-        $check = $pdo->prepare("SELECT id FROM doctor_schedules WHERE doctor_id=? AND day_of_week=?");
-        $check->execute([$profileId,$day]);
-        if ($check->fetch()) {
-            $pdo->prepare("UPDATE doctor_schedules SET is_available=?,start_time=?,end_time=?,slot_duration=? WHERE doctor_id=? AND day_of_week=?")
-                ->execute([$available,$start,$end,$slot,$profileId,$day]);
-        } else {
-            $pdo->prepare("INSERT INTO doctor_schedules (doctor_id,day_of_week,start_time,end_time,slot_duration,is_available) VALUES (?,?,?,?,?,?)")
-                ->execute([$profileId,$day,$start,$end,$slot,$available]);
+    try {
+        $scheduleData = json_decode($_POST['schedule'] ?? '[]', true);
+        if (!is_array($scheduleData)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid data format.']);
+            return;
         }
+        $pdo->beginTransaction();
+        foreach ($scheduleData as $item) {
+            $day       = $item['day'] ?? '';
+            $available = intval($item['available'] ?? 0);
+            $start     = $item['start'] ?? '09:00';
+            $end       = $item['end'] ?? '17:00';
+            $slot      = intval($item['slot'] ?? 30);
+            $days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+            if (!in_array($day, $days)) continue;
+            // UPSERT
+            $check = $pdo->prepare("SELECT id FROM doctor_schedules WHERE doctor_id=? AND day_of_week=?");
+            $check->execute([$profileId,$day]);
+            if ($check->fetch()) {
+                $pdo->prepare("UPDATE doctor_schedules SET is_available=?,start_time=?,end_time=?,slot_duration=? WHERE doctor_id=? AND day_of_week=?")
+                    ->execute([$available,$start,$end,$slot,$profileId,$day]);
+            } else {
+                $pdo->prepare("INSERT INTO doctor_schedules (doctor_id,day_of_week,start_time,end_time,slot_duration,is_available) VALUES (?,?,?,?,?,?)")
+                    ->execute([$profileId,$day,$start,$end,$slot,$available]);
+            }
+        }
+        $pdo->commit();
+        sendJsonResponse(['success' => true, 'message' => 'Schedule updated successfully!']);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        sendJsonResponse(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
     }
-    echo json_encode(['success'=>true]);
 }
 
 function toggleClinicStatus() {
@@ -183,7 +201,7 @@ function toggleClinicStatus() {
     $status = ($_POST['status'] ?? '') === 'open' ? 'open' : 'closed';
     // Update status and explicit timestamp to mark a manual override
     $pdo->prepare("UPDATE doctors SET clinic_status=?, clinic_status_updated_at=NOW() WHERE id=?")->execute([$status,$profileId]);
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function updateProfile() {
@@ -199,7 +217,7 @@ function updateProfile() {
     $clinicPhone = trim($_POST['clinic_phone'] ?? '');
     $about       = trim($_POST['about'] ?? '');
     
-    if (!$name) { echo json_encode(['success'=>false,'message'=>'Name required.']); return; }
+    if (!$name) { sendJsonResponse(['success'=>false,'message'=>'Name required.']); }
 
     $profileImagePath = null;
     if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
@@ -207,12 +225,10 @@ function updateProfile() {
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg', 'jpeg', 'png'];
         if (!in_array($ext, $allowed)) {
-            echo json_encode(['success'=>false, 'message'=>'Invalid image format. JPG/PNG required.']);
-            return;
+            sendJsonResponse(['success'=>false, 'message'=>'Invalid image format. JPG/PNG required.']);
         }
         if ($file['size'] > 2*1024*1024) {
-            echo json_encode(['success'=>false, 'message'=>'Image too large. Max 2MB.']);
-            return;
+            sendJsonResponse(['success'=>false, 'message'=>'Image too large. Max 2MB.']);
         }
         $dir = __DIR__ . '/../uploads/profiles/';
         if (!is_dir($dir)) mkdir($dir, 0755, true);
@@ -235,26 +251,26 @@ function updateProfile() {
     $params[] = $profileId;
     
     $pdo->prepare($sql)->execute($params);
-    echo json_encode(['success'=>true, 'message'=>'Profile updated successfully!']);
+    sendJsonResponse(['success'=>true, 'message'=>'Profile updated successfully!']);
 }
 
 function changePassword() {
     global $pdo, $userId;
     $current = $_POST['current'] ?? '';
     $new     = $_POST['new'] ?? '';
-    if (strlen($new) < 8) { echo json_encode(['success'=>false,'message'=>'Password must be at least 8 characters.']); return; }
+    if (strlen($new) < 8) { sendJsonResponse(['success'=>false,'message'=>'Password must be at least 8 characters.']); }
     $stmt = $pdo->prepare("SELECT password FROM users WHERE id=?");
     $stmt->execute([$userId]); $user = $stmt->fetch();
-    if (!$user || !password_verify($current, $user['password'])) { echo json_encode(['success'=>false,'message'=>'Current password incorrect.']); return; }
+    if (!$user || !password_verify($current, $user['password'])) { sendJsonResponse(['success'=>false,'message'=>'Current password incorrect.']); }
     $hashed = password_hash($new, PASSWORD_BCRYPT, ['cost'=>12]);
     $pdo->prepare("UPDATE users SET password=? WHERE id=?")->execute([$hashed,$userId]);
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function markNotifRead() {
     global $pdo, $userId;
     $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=?")->execute([$userId]);
-    echo json_encode(['success'=>true]);
+    sendJsonResponse(['success'=>true]);
 }
 
 function proposeReschedule() {
@@ -265,12 +281,10 @@ function proposeReschedule() {
     $timeRaw = trim($_POST['time'] ?? '');
     $time = normalizeAppointmentTimeForDb($timeRaw);
     if (!$id || !$date || !$time) {
-        echo json_encode(['success' => false, 'message' => 'Date and time are required.']);
-        return;
+        sendJsonResponse(['success' => false, 'message' => 'Date and time are required.']);
     }
     if (strtotime($date) < strtotime(date('Y-m-d'))) {
-        echo json_encode(['success' => false, 'message' => 'Cannot propose a date in the past.']);
-        return;
+        sendJsonResponse(['success' => false, 'message' => 'Cannot propose a date in the past.']);
     }
     $stmt = $pdo->prepare("SELECT a.*, p.user_id AS p_user_id, u.name AS patient_name FROM appointments a
         JOIN patients p ON a.patient_id = p.id JOIN users u ON p.user_id = u.id
@@ -278,18 +292,15 @@ function proposeReschedule() {
     $stmt->execute([$id, $profileId]);
     $row = $stmt->fetch();
     if (!$row) {
-        echo json_encode(['success' => false, 'message' => 'Appointment not found.']);
-        return;
+        sendJsonResponse(['success' => false, 'message' => 'Appointment not found.']);
     }
     if (!in_array($row['status'], ['pending', 'confirmed'], true)) {
-        echo json_encode(['success' => false, 'message' => 'This appointment cannot be rescheduled.']);
-        return;
+        sendJsonResponse(['success' => false, 'message' => 'This appointment cannot be rescheduled.']);
     }
     $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status NOT IN ('cancelled') AND id != ?");
     $check->execute([$profileId, $date, $time, $id]);
     if ($check->fetch()) {
-        echo json_encode(['success' => false, 'message' => 'That slot is already booked. Choose another time.']);
-        return;
+        sendJsonResponse(['success' => false, 'message' => 'That slot is already booked. Choose another time.']);
     }
     $pdo->prepare("UPDATE appointments SET proposed_appointment_date = ?, proposed_appointment_time = ? WHERE id = ? AND doctor_id = ?")
         ->execute([$date, $time, $id, $profileId]);
@@ -307,12 +318,11 @@ function proposeReschedule() {
 
     sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
 
-    echo json_encode(['success' => true]);
+    sendJsonResponse(['success' => true]);
 }
 
 function removeProfileImage() {
     global $pdo, $profileId;
     $pdo->prepare("UPDATE doctors SET profile_image = NULL WHERE id = ?")->execute([$profileId]);
-    echo json_encode(['success'=>true, 'message'=>'Profile image removed.']);
+    sendJsonResponse(['success'=>true, 'message'=>'Profile image removed.']);
 }
-?>

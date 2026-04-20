@@ -41,7 +41,14 @@ try {
 
     require_once __DIR__ . '/upload_schema_fix.php';
     ensureUploadSchemaFix($pdo);
+
+    require_once __DIR__ . '/doctor_schedule_schema.php';
+    ensureDoctorScheduleSchema($pdo);
 } catch (PDOException $e) {
+    if (strpos($_SERVER['REQUEST_URI'], '/api/') !== false || strpos($_SERVER['PHP_SELF'], '/api/') !== false || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Database connection failed. Please try again later.']);
+        exit;
+    }
     die("Database Connection Failed: " . $e->getMessage());
 }
-?>
