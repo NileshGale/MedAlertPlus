@@ -239,6 +239,18 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+/**
+ * Detects URLs in text and converts them to clickable <a> tags.
+ * Designed to work on already-escaped HTML text.
+ */
+function linkify(text) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.replace(urlRegex, function(url) {
+    // We use var(--primary-light) for a nice blue color that matches the theme.
+    return `<a href="${url}" target="_blank" rel="noopener" style="color:var(--primary-light);font-weight:600;text-decoration:underline;">${url}</a>`;
+  });
+}
+
 // ---- Alert Helper ----
 function showAlert(el, msg, type) {
   if (!el) return;
@@ -587,7 +599,7 @@ async function loadPatientNotifications() {
         <div style="width:100%;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
           <div style="min-width:0;flex:1;">
             <div style="font-weight:700;font-size:13px;">${escapeHtml(n.title)}</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;">${escapeHtml(n.message)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;">${linkify(escapeHtml(n.message))}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:6px;">${escapeHtml(n.created_at)}</div>
           </div>
           <button type="button" class="notif-delete-one" title="Delete" onclick="event.stopPropagation();patientDeleteNotification(${nid});" style="flex-shrink:0;margin-top:0;">Delete</button>
@@ -942,6 +954,21 @@ function resetSymptomChecker() {
   if (form) { form.reset(); form.style.display = 'none'; }
 }
 
+function backToStep1() {
+  document.getElementById('symptomCheckerForm').style.display = 'none';
+  document.getElementById('symptomStep1').style.display = 'block';
+}
+
+function backToInputs() {
+  document.getElementById('symptomResult').style.display = 'none';
+  document.getElementById('symptomCheckerForm').style.display = 'block';
+}
+
+function backToSummary() {
+  document.getElementById('resRemediesContainer').style.display = 'none';
+  document.getElementById('resSummaryContainer').style.display = 'block';
+}
+
 // ---- Patient: Clinic Search (Google + OpenStreetMap fallback) ----
 let clinicGeoPoint = null;
 let clinicSuggestTimer = null;
@@ -1239,10 +1266,16 @@ function openRescheduleModal(apptId, currentDate, currentTime) {
   const dateIn = overlay.querySelector('#rescheduleDateInput');
   const today = new Date().toISOString().slice(0, 10);
   if (dateIn) dateIn.min = today;
-  overlay.querySelector('#rescheduleSaveBtn').addEventListener('click', async () => {
+  overlay.querySelector('#rescheduleSaveBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     const date = overlay.querySelector('#rescheduleDateInput').value;
     const time = overlay.querySelector('#rescheduleTimeInput').value;
     if (!date || !time) { showToast('Pick date and time', 'warning'); return; }
+    
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    
     const body = new URLSearchParams({ action: 'propose_reschedule', id: String(apptId), date, time }).toString();
     try {
       const res = await fetch('../api/doctor_api.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
@@ -1251,8 +1284,16 @@ function openRescheduleModal(apptId, currentDate, currentTime) {
         showToast('Patient notified. Awaiting their response.', 'success');
         close();
         loadDoctorAppointments();
-      } else showToast(json.message || 'Failed', 'error');
-    } catch (e) { showToast('Server error', 'error'); }
+      } else {
+        showToast(json.message || 'Failed', 'error');
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    } catch (e) { 
+      showToast('Server error', 'error');
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
   });
 }
 

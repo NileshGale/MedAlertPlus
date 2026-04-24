@@ -199,7 +199,6 @@ try {
 
         case 'patient_notifications':
             if ($role !== 'patient') { echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit; }
-            require_once __DIR__ . '/../config/appointment_reschedule_schema.php';
             ensureAppointmentRescheduleSchema($pdo);
             $stmt = $pdo->prepare("SELECT id, title, message, type, is_read, created_at, appointment_id, cta
                                    FROM notifications

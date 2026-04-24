@@ -2,6 +2,7 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+require_once __DIR__ . '/utils.php';
 
 define('DB_HOST', 'localhost');
 define('DB_USER', 'root');
@@ -33,17 +34,7 @@ try {
                                status = 'active'");
     $stmt->execute([$adminName, $adminEmail, $adminPasswordHash]);
 
-    require_once __DIR__ . '/appointment_reschedule_schema.php';
-    ensureAppointmentRescheduleSchema($pdo);
 
-    require_once __DIR__ . '/profile_image_schema.php';
-    ensureProfileImageSchema($pdo);
-
-    require_once __DIR__ . '/upload_schema_fix.php';
-    ensureUploadSchemaFix($pdo);
-
-    require_once __DIR__ . '/doctor_schedule_schema.php';
-    ensureDoctorScheduleSchema($pdo);
 } catch (PDOException $e) {
     if (strpos($_SERVER['REQUEST_URI'], '/api/') !== false || strpos($_SERVER['PHP_SELF'], '/api/') !== false || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')) {
         header('Content-Type: application/json');

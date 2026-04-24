@@ -610,13 +610,21 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
               </div>
              <form id="symptomCheckerForm" style="display:none">
                 <div id="symptomInputsContainer" style="margin-bottom:20px"></div>
-                <button type="submit" class="btn btn-primary" style="width:100%">Analyze Symptoms</button>
+                <div style="display:flex;gap:12px">
+                   <button type="button" class="btn" style="flex:1;background:var(--bg);border:1px solid var(--border)" onclick="backToStep1()">
+                      <i class="fas fa-arrow-left"></i> Back
+                   </button>
+                   <button type="submit" class="btn btn-primary" style="flex:2">Analyze Symptoms</button>
+                </div>
              </form>
              <div id="symptomResult" style="display:none;margin-top:30px;padding:25px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;">
                 <div id="resSummaryContainer">
                    <h3 style="color:#0369a1;margin-bottom:15px"><i class="fas fa-info-circle"></i> Possible Condition: <span id="resDisease">...</span></h3>
                    <div style="margin-bottom:20px"><strong>Recommended Medicines:</strong> <p id="resMeds" style="margin-top:5px;font-size:14px;color:var(--text-light)"></p></div>
-                   <div style="display:flex;gap:15px">
+                   <div style="display:flex;gap:10px;flex-wrap:wrap">
+                      <button type="button" class="btn" style="background:var(--bg);border:1px solid #bae6fd;color:var(--text)" onclick="backToInputs()">
+                         <i class="fas fa-arrow-left"></i> Back
+                      </button>
                       <button class="btn btn-primary" onclick="showHomeRemedies()">Next: Home Remedies</button>
                       <button class="btn" style="background:#fff;border:1px solid #bae6fd;color:#0369a1" onclick="resetSymptomChecker()">Start Over</button>
                    </div>
@@ -625,7 +633,10 @@ body { font-family: 'Figtree', sans-serif; background: var(--bg); color: var(--t
                 <div id="resRemediesContainer" style="display:none">
                    <h3 style="color:#0369a1;margin-bottom:15px"><i class="fas fa-leaf"></i> Home Remedies</h3>
                    <p id="resRemedies" style="margin-bottom:20px;font-size:15px;line-height:1.6;color:var(--text-light)"></p>
-                   <div style="display:flex;gap:15px">
+                   <div style="display:flex;gap:10px;flex-wrap:wrap">
+                      <button type="button" class="btn" style="background:var(--bg);border:1px solid #bae6fd;color:var(--text)" onclick="backToSummary()">
+                         <i class="fas fa-arrow-left"></i> Back
+                      </button>
                       <button class="btn btn-primary" onclick="showTab('clinics')">Find Near Doctor</button>
                       <button class="btn" style="background:#fff;border:1px solid #bae6fd;color:#0369a1" onclick="resetSymptomChecker()">Finish</button>
                    </div>

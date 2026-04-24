@@ -280,45 +280,61 @@ function proposeReschedule() {
     $date = trim($_POST['date'] ?? '');
     $timeRaw = trim($_POST['time'] ?? '');
     $time = normalizeAppointmentTimeForDb($timeRaw);
+    
     if (!$id || !$date || !$time) {
         sendJsonResponse(['success' => false, 'message' => 'Date and time are required.']);
     }
+    
     if (strtotime($date) < strtotime(date('Y-m-d'))) {
         sendJsonResponse(['success' => false, 'message' => 'Cannot propose a date in the past.']);
     }
-    $stmt = $pdo->prepare("SELECT a.*, p.user_id AS p_user_id, u.name AS patient_name FROM appointments a
-        JOIN patients p ON a.patient_id = p.id JOIN users u ON p.user_id = u.id
-        WHERE a.id = ? AND a.doctor_id = ?");
-    $stmt->execute([$id, $profileId]);
-    $row = $stmt->fetch();
-    if (!$row) {
-        sendJsonResponse(['success' => false, 'message' => 'Appointment not found.']);
+
+    try {
+        $stmt = $pdo->prepare("SELECT a.*, p.user_id AS p_user_id, u.name AS patient_name, u.email AS patient_email 
+                             FROM appointments a
+                             JOIN patients p ON a.patient_id = p.id 
+                             JOIN users u ON p.user_id = u.id
+                             WHERE a.id = ? AND a.doctor_id = ?");
+        $stmt->execute([$id, $profileId]);
+        $row = $stmt->fetch();
+        
+        if (!$row) {
+            sendJsonResponse(['success' => false, 'message' => 'Appointment not found.']);
+        }
+        
+        if (!in_array($row['status'], ['pending', 'confirmed'], true)) {
+            sendJsonResponse(['success' => false, 'message' => 'This appointment cannot be rescheduled.']);
+        }
+        
+        $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status NOT IN ('cancelled') AND id != ?");
+        $check->execute([$profileId, $date, $time, $id]);
+        if ($check->fetch()) {
+            sendJsonResponse(['success' => false, 'message' => 'That slot is already booked. Choose another time.']);
+        }
+        
+        $pdo->prepare("UPDATE appointments SET proposed_appointment_date = ?, proposed_appointment_time = ? WHERE id = ? AND doctor_id = ?")
+            ->execute([$date, $time, $id, $profileId]);
+
+        $pUserId = (int) $row['p_user_id'];
+        $pdo->prepare("DELETE FROM notifications WHERE user_id = ? AND appointment_id = ? AND cta = 'reschedule'")->execute([$pUserId, $id]);
+
+        $oldWhen = date('M d, Y', strtotime($row['appointment_date'])) . ' at ' . date('h:i A', strtotime($row['appointment_time']));
+        $newWhen = date('M d, Y', strtotime($date)) . ' at ' . date('h:i A', strtotime($time));
+        $title = 'Appointment Time Update';
+        $msg = "Dr. requested a new time for your appointment.\nWas: {$oldWhen}\nProposed: {$newWhen}\n\nPlease log in to accept or reject this change.";
+
+        $pdo->prepare("INSERT INTO notifications (user_id, title, message, type, appointment_id, cta) VALUES (?, ?, ?, 'warning', ?, 'reschedule')")
+            ->execute([$pUserId, $title, $msg, $id]);
+
+        // Attempt to send email but don't block success if mail fails
+        if (!empty($row['patient_email'])) {
+            sendAppointmentUpdateEmail($row['patient_email'], $row['patient_name'], $title, $msg);
+        }
+
+        sendJsonResponse(['success' => true]);
+    } catch (Throwable $e) {
+        sendJsonResponse(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
     }
-    if (!in_array($row['status'], ['pending', 'confirmed'], true)) {
-        sendJsonResponse(['success' => false, 'message' => 'This appointment cannot be rescheduled.']);
-    }
-    $check = $pdo->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status NOT IN ('cancelled') AND id != ?");
-    $check->execute([$profileId, $date, $time, $id]);
-    if ($check->fetch()) {
-        sendJsonResponse(['success' => false, 'message' => 'That slot is already booked. Choose another time.']);
-    }
-    $pdo->prepare("UPDATE appointments SET proposed_appointment_date = ?, proposed_appointment_time = ? WHERE id = ? AND doctor_id = ?")
-        ->execute([$date, $time, $id, $profileId]);
-
-    $pUserId = (int) $row['p_user_id'];
-    $pdo->prepare("DELETE FROM notifications WHERE user_id = ? AND appointment_id = ? AND cta = 'reschedule'")->execute([$pUserId, $id]);
-
-    $oldWhen = date('M d, Y', strtotime($row['appointment_date'])) . ' at ' . date('h:i A', strtotime($row['appointment_time']));
-    $newWhen = date('M d, Y', strtotime($date)) . ' at ' . date('h:i A', strtotime($time));
-    $title = 'Appointment Time Update';
-    $msg = "Dr. requested a new time for your appointment.\nWas: {$oldWhen}\nProposed: {$newWhen}\n\nPlease log in to accept or reject this change.";
-
-    $pdo->prepare("INSERT INTO notifications (user_id, title, message, type, appointment_id, cta) VALUES (?, ?, ?, 'warning', ?, 'reschedule')")
-        ->execute([$pUserId, $title, $msg, $id]);
-
-    sendAppointmentUpdateEmail($row['p_email'], $row['p_name'], $title, $msg);
-
-    sendJsonResponse(['success' => true]);
 }
 
 function removeProfileImage() {
