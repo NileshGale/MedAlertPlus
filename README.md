@@ -131,15 +131,39 @@ The "Brain" of the system, providing oversight and data insights.
 
 ```text
 Med-Alert-Plus/
-├── api/             # Backend logic and API controllers
-├── assets/          # Static files (CSS, JS, Images)
-├── auth/            # Authentication logic (Login/Register/OTP)
-├── config/          # Database & System Configuration (SQL files)
-├── cron/            # Automated background runners (Windows Scheduler)
-├── dashboard/       # Specialized UI for Patient, Doctor, and Admin
-├── phpmailer/       # Email sending library
-├── uploads/         # Distributed storage for reports and avatars
-└── index.php        # Landing page and application entry
+├── api/                        # Backend API Controllers
+│   ├── admin_api.php           # Admin-related actions (Users, Approvals)
+│   ├── doctor_api.php          # Doctor-related actions (Schedules, Patients)
+│   ├── patient_api.php         # Patient-related actions (Reminders, Reports)
+│   ├── ai_summarizer.php       # AI-powered medical report summarization
+│   ├── clinic_places_service.php # Google Places integration for finding clinics
+│   ├── dashboard_data.php      # Analytics and real-time dashboard stats
+│   ├── sos_api.php             # Emergency SOS handling and geolocation
+│   └── symptom_api.php         # AI logic for symptom pattern matching
+├── assets/                     # Static Frontend Assets
+│   ├── css/                    # Custom styling (Inter typography, Dark mode)
+│   └── js/                     # Client-side logic and Chart.js integrations
+├── auth/                       # Security & Session Management
+│   └── auth.php                # Core authentication (Login, Register, OTP)
+├── config/                     # Core Configuration & Utilities
+│   ├── db.php                  # Database connection and environment setup
+│   ├── mail.php                # SMTP/PHPMailer configuration for alerts
+│   ├── utils.php               # Global helper functions and formatting
+│   └── database.sql            # Master database schema and table structure
+├── cron/                       # Automation & Background Tasks
+│   ├── reminder_cron.php       # Entry point for the medicine scheduler
+│   ├── send_reminders.php      # Dispatch logic for automated medication alerts
+│   └── medicine_reminder_runner.php # Background processing for queue management
+├── dashboard/                  # Role-Based User Interfaces
+│   ├── admin.html              # Governance, approvals, and system analytics
+│   ├── doctor.html             # Patient records, appointments, and clinic control
+│   └── patient.html            # Medication tracking, AI tools, and SOS
+├── phpmailer/                  # External Library for secure email transmission
+├── uploads/                    # Distributed storage for patient reports and avatars
+├── index.php                   # Public landing page and marketing overview
+├── login.html                  # Unified secure login portal
+├── register.html               # Multi-role registration gateway
+└── scheduler.bat               # Windows batch script for periodic cron execution
 ```
 
 ---
